@@ -1,0 +1,446 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+class NoteController extends Controller
+{
+    public function notes(Request $request)
+    {
+        $professeur = Auth::user();
+
+        // Vérifier que c'est bien un professeur
+        if (! $professeur instanceof \App\Models\Professeur) {
+            return response()->json(['error' => 'Non autorisé'], 403);
+        }
+
+        // Charger les classes avec leurs matières enseignées par ce professeur
+        $professeur->load(['classes' => function ($query) use ($professeur) {
+            $query->with(['matieres' => function ($q) use ($professeur) {
+                $q->wherePivot('professeur_id', $professeur->id)
+                    ->orderBy('pivot_ordre_affichage');
+            }])->withCount('eleves');
+        }]);
+
+        $matiere = null;
+        $classe_selectionnee = null;
+        $eleves = collect();
+        $notes_existantes = collect();
+
+        // Si une classe est sélectionnée, charger ses matières enseignées par ce professeur
+        if ($request->has('classe_id')) {
+            $classe_selectionnee = $professeur->classes->firstWhere('id', $request->classe_id);
+            if ($classe_selectionnee && $classe_selectionnee->matieres->isNotEmpty()) {
+                $matiere = $classe_selectionnee->matieres->first();
+            }
+        }
+
+        // Si tous les paramètres sont sélectionnés
+        if ($request->has('classe_id') && $request->has('trimestre') && $classe_selectionnee && $matiere) {
+
+            // Charger les élèves de la classe par ordre alphabétique
+            $eleves = $classe_selectionnee->eleves()
+                ->orderBy('nom')
+                ->orderBy('prenom')
+                ->get();
+
+            // Charger les notes existantes pour ce trimestre
+            $notes_existantes = Note::where('classe_id', $request->classe_id)
+                ->where('trimestre', $request->trimestre)
+                ->where('matiere_id', $matiere->id)
+                ->get()
+                ->keyBy('eleve_id');
+        }
+
+        return response()->json([
+            'success' => true,
+            'professeur' => $professeur,
+            'classe_selectionnee' => $classe_selectionnee,
+            'matiere' => $matiere,
+            'eleves' => $eleves,
+            'notes_existantes' => $notes_existantes,
+        ]);
+    }
+
+    public function storeNotes(Request $request)
+    {
+        $professeur = Auth::user();
+
+        if (! $professeur instanceof \App\Models\Professeur) {
+            return response()->json(['error' => 'Non autorisé'], 403);
+        }
+
+        $request->validate([
+            'classe_id' => 'required|exists:classes,id',
+            'trimestre' => 'required|integer|between:1,3',
+            'matiere_id' => 'required|exists:matieres,id',
+            'type_note' => 'required|in:interro,devoir',
+            'numero' => 'required|integer',
+            'notes' => 'required|array',
+            'notes.*' => 'nullable|numeric|min:0|max:20',
+        ]);
+
+        // Vérifier que le professeur a accès à cette classe et matière
+        if (! $professeur->classes->contains($request->classe_id)) {
+            return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
+        }
+
+        $classe = Classe::findOrFail($request->classe_id);
+        $matiere = Matiere::findOrFail($request->matiere_id);
+
+        // Récupérer le coefficient depuis la table classe_matiere
+        $coefficient = DB::table('classe_matiere')
+            ->where('classe_id', $request->classe_id)
+            ->where('matiere_id', $request->matiere_id)
+            ->where('professeur_id', $professeur->id)
+            ->value('coefficient');
+
+        // Si le coefficient n'est pas trouvé, utiliser une valeur par défaut
+        $coefficient = $coefficient ?? 1.0;
+
+        $numero = (int) $request->numero;
+
+        // Validation supplémentaire du numéro
+        if ($request->type_note === 'interro' && ($numero < 1 || $numero > 4)) {
+            return response()->json(['error' => 'Numéro d\'interrogation invalide.'], 400);
+        }
+
+        if ($request->type_note === 'devoir' && ($numero < 1 || $numero > 2)) {
+            return response()->json(['error' => 'Numéro de devoir invalide.'], 400);
+        }
+
+        // Déterminer la colonne une seule fois
+        $colonne = $request->type_note === 'interro'
+            ? match ($numero) {
+                1 => 'premier_interro',
+                2 => 'deuxieme_interro',
+                3 => 'troisieme_interro',
+                4 => 'quatrieme_interro',
+            }
+        : match ($numero) {
+            1 => 'premier_devoir',
+            2 => 'deuxieme_devoir',
+        };
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($request->notes as $eleveId => $valeurNote) {
+                if (! is_null($valeurNote)) {
+                    $note = Note::updateOrCreate(
+                        [
+                            'eleve_id' => $eleveId,
+                            'classe_id' => $request->classe_id,
+                            'matiere_id' => $request->matiere_id,
+                            'trimestre' => $request->trimestre,
+                        ],
+                        [
+                            $colonne => $valeurNote,
+                            'professeur_id' => $professeur->id,
+                            'coefficient' => $coefficient,
+                        ]
+                    );
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Notes enregistrées avec succès!',
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erreur enregistrement notes: '.$e->getMessage());
+
+            return response()->json(['error' => 'Erreur lors de l\'enregistrement des notes: '.$e->getMessage()], 500);
+        }
+    }
+
+    public function calculerMoyennes(Request $request)
+    {
+        if (! Auth::check()) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
+
+        $request->validate([
+            'classe_id' => 'required|exists:classes,id',
+            'trimestre' => 'required|integer|between:1,3',
+            'matiere_id' => 'required|exists:matieres,id',
+        ]);
+
+        $professeur = Auth::user();
+
+        // Vérifier que le professeur a accès à cette classe et matière
+        if (! $professeur->classes->contains($request->classe_id)) {
+            return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
+        }
+
+        // Récupérer la classe et la matière
+        $classe_selectionnee = Classe::find($request->classe_id);
+        $matiere = Matiere::find($request->matiere_id);
+
+        // Vérifier que la classe et la matière existent
+        if (! $classe_selectionnee || ! $matiere) {
+            return response()->json(['error' => 'Classe ou matière non trouvée.'], 404);
+        }
+
+        // Récupérer le coefficient depuis la table classe_matiere
+        $coefficient = DB::table('classe_matiere')
+            ->where('classe_id', $request->classe_id)
+            ->where('matiere_id', $request->matiere_id)
+            ->where('professeur_id', $professeur->id)
+            ->value('coefficient');
+
+        $coefficient = $coefficient ?? 1.0;
+
+        // Récupérer toutes les notes de la classe pour le trimestre
+        $notes = Note::where('classe_id', $request->classe_id)
+            ->where('matiere_id', $request->matiere_id)
+            ->where('trimestre', $request->trimestre)
+            ->with('eleve')
+            ->get();
+
+        // Mettre à jour les coefficients si nécessaire
+        foreach ($notes as $note) {
+            if ($note->coefficient != $coefficient) {
+                $note->coefficient = $coefficient;
+                $note->save();
+            }
+        }
+
+        // Recharger les notes après mise à jour
+        $notes = Note::where('classe_id', $request->classe_id)
+            ->where('matiere_id', $request->matiere_id)
+            ->where('trimestre', $request->trimestre)
+            ->with('eleve')
+            ->get();
+
+        // Calculer les moyennes et classer les élèves
+        $moyennes = $notes->map(function ($note) use ($coefficient) {
+            return [
+                'eleve_id' => $note->eleve_id,
+                'eleve_nom' => $note->eleve->nom,
+                'eleve_prenom' => $note->eleve->prenom,
+                'premier_interro' => $note->premier_interro,
+                'deuxieme_interro' => $note->deuxieme_interro,
+                'troisieme_interro' => $note->troisieme_interro,
+                'quatrieme_interro' => $note->quatrieme_interro,
+                'moyenne_interro' => $note->moyenne_interro,
+                'premier_devoir' => $note->premier_devoir,
+                'deuxieme_devoir' => $note->deuxieme_devoir,
+                'moyenne_trimestre' => $note->moyenne_trimestrielle,
+                'coefficient' => $coefficient,
+                'moyenne_coefficientee' => $note->moyenne_trimestrielle ? $note->moyenne_trimestrielle * $coefficient : null,
+                'commentaire' => $note->commentaire,
+            ];
+        })->sortByDesc('moyenne_trimestre');
+
+        // Ajouter le rang
+        $moyennesAvecRang = $moyennes->values()->map(function ($item, $index) {
+            $item['rang'] = $index + 1;
+
+            return $item;
+        });
+
+        // Récupérer également les autres variables nécessaires pour la vue
+        $professeur->load(['classes' => function ($query) use ($professeur) {
+            $query->with(['matieres' => function ($q) use ($professeur) {
+                $q->wherePivot('professeur_id', $professeur->id)
+                    ->orderBy('pivot_ordre_affichage');
+            }])->withCount('eleves');
+        }]);
+
+        $eleves = collect();
+        $notes_existantes = collect();
+
+        return response()->json([
+            'success' => true,
+            'professeur' => $professeur,
+            'moyennesAvecRang' => $moyennesAvecRang,
+            'classe_selectionnee' => $classe_selectionnee,
+            'matiere' => $matiere,
+            'eleves' => $eleves,
+            'notes_existantes' => $notes_existantes,
+            'filters' => [
+                'classe_id' => $request->classe_id,
+                'trimestre' => $request->trimestre,
+                'matiere_id' => $request->matiere_id,
+            ],
+        ]);
+    }
+
+    public function getMoyennesAjax(Request $request)
+    {
+        if (! Auth::check()) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
+
+        $request->validate([
+            'classe_id' => 'required|exists:classes,id',
+            'trimestre' => 'required|integer|between:1,3',
+        ]);
+
+        $professeur = Auth::user();
+
+        // Vérifier que le professeur a accès à cette classe
+        if (! $professeur->classes->contains($request->classe_id)) {
+            return response()->json(['error' => 'Accès non autorisé à cette classe'], 403);
+        }
+
+        // Récupérer la matière enseignée par ce professeur dans cette classe
+        $matiere = DB::table('classe_matiere')
+            ->where('classe_id', $request->classe_id)
+            ->where('professeur_id', $professeur->id)
+            ->first();
+
+        if (! $matiere) {
+            return response()->json(['error' => 'Aucune matière trouvée pour cette classe'], 404);
+        }
+
+        // Récupérer les notes avec les informations des élèves
+        $notes = Note::with('eleve')
+            ->where('classe_id', $request->classe_id)
+            ->where('trimestre', $request->trimestre)
+            ->where('matiere_id', $matiere->matiere_id)
+            ->where('professeur_id', $professeur->id)
+            ->get();
+
+        if ($notes->isEmpty()) {
+            return response()->json(['moyennes' => []]);
+        }
+
+        // Calculer le rang pour chaque élève
+        $notesAvecRang = $notes->map(function ($note) use ($notes) {
+            // Calculer le rang en fonction de la moyenne coefficientée
+            $rang = $notes->where('moyenne_coefficientee', '>', $note->moyenne_coefficientee)
+                ->count() + 1;
+
+            return [
+                'rang' => $rang,
+                'eleve_nom' => $note->eleve->nom,
+                'eleve_prenom' => $note->eleve->prenom,
+                'premier_interro' => $note->premier_interro,
+                'deuxieme_interro' => $note->deuxieme_interro,
+                'troisieme_interro' => $note->troisieme_interro,
+                'quatrieme_interro' => $note->quatrieme_interro,
+                'moyenne_interro' => $note->moyenne_interro,
+                'premier_devoir' => $note->premier_devoir,
+                'deuxieme_devoir' => $note->deuxieme_devoir,
+                'moyenne_trimestrielle' => $note->moyenne_trimestrielle,
+                'coefficient' => $note->coefficient,
+                'moyenne_coefficientee' => $note->moyenne_coefficientee,
+                'commentaire' => $note->commentaire,
+            ];
+        })->sortBy('rang')->values();
+
+        return response()->json([
+            'moyennes' => $notesAvecRang,
+        ]);
+    }
+
+    public function getMoyennesForDashboard($classeId, $trimestre, $professeurId)
+    {
+        try {
+            // Récupérer la matière enseignée par ce professeur dans cette classe
+            $matiere = DB::table('classe_matiere')
+                ->where('classe_id', $classeId)
+                ->where('professeur_id', $professeurId)
+                ->first();
+
+            if (! $matiere) {
+                return [];
+            }
+
+            // Récupérer les notes avec les informations des élèves
+            $notes = Note::with('eleve')
+                ->where('classe_id', $classeId)
+                ->where('trimestre', $trimestre)
+                ->where('matiere_id', $matiere->matiere_id)
+                ->where('professeur_id', $professeurId)
+                ->get();
+
+            if ($notes->isEmpty()) {
+                return [];
+            }
+
+            // Calculer le rang pour chaque élève
+            $notesAvecRang = $notes->map(function ($note) use ($notes, $classeId) {
+                // Calculer le rang en fonction de la moyenne coefficientée
+                $rang = $notes->where('moyenne_coefficientee', '>', $note->moyenne_coefficientee)
+                    ->count() + 1;
+
+                // Récupérer le nom de la classe
+                $classe = Classe::find($classeId);
+
+                return [
+                    'rang' => $rang,
+                    'eleve_nom' => $note->eleve->nom,
+                    'eleve_prenom' => $note->eleve->prenom,
+                    'premier_interro' => $note->premier_interro,
+                    'deuxieme_interro' => $note->deuxieme_interro,
+                    'troisieme_interro' => $note->troisieme_interro,
+                    'quatrieme_interro' => $note->quatrieme_interro,
+                    'moyenne_interro' => $note->moyenne_interro,
+                    'premier_devoir' => $note->premier_devoir,
+                    'deuxieme_devoir' => $note->deuxieme_devoir,
+                    'moyenne_trimestrielle' => $note->moyenne_trimestrielle,
+                    'coefficient' => $note->coefficient,
+                    'moyenne_coefficientee' => $note->moyenne_coefficientee,
+                    'commentaire' => $note->commentaire,
+                    'classe_nom' => $classe ? $classe->nom : 'Classe inconnue',
+                ];
+            })->sortBy('rang')->values()->toArray();
+
+            return $notesAvecRang;
+
+        } catch (\Exception $e) {
+            Log::error('Erreur récupération moyennes dashboard: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    public function dashboard(Request $request)
+    {
+        if (! Auth::check()) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
+
+        $professeur = Auth::user();
+
+        // Charger les classes avec le nombre d'élèves
+        $professeur->load(['classes' => function ($query) {
+            $query->withCount('eleves');
+        }]);
+
+        // Récupérer toutes les matières disponibles
+        $matieres = Matiere::orderBy('nom')->get();
+
+        $stats = [
+            'classes_count' => $professeur->classes->count(),
+            'eleves_count' => $professeur->classes->sum('eleves_count'),
+            'cours_semaine' => 8,
+        ];
+
+        // Récupérer les moyennes si des filtres sont appliqués
+        $moyennesData = [];
+        if ($request->has('classe_id') && $request->has('trimestre')) {
+            $moyennesData = $this->getMoyennesForDashboard(
+                $request->classe_id,
+                $request->trimestre,
+                $professeur->id
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'professeur' => $professeur,
+            'stats' => $stats,
+            'matieres' => $matieres,
+            'moyennesData' => $moyennesData,
+        ]);
+    }
+}
