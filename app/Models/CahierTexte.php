@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class CahierTexte extends Model
 {
-     protected $fillable = [
+    protected $fillable = [
         'classe_id',
         'professeur_id',
-        'date_cours' => 'date',
+        'matiere_id',
+        'date_cours',
         'duree_cours',
         'heure_debut',
         'notion_cours',
@@ -17,6 +18,10 @@ class CahierTexte extends Model
         'contenu_cours',
         'travail_a_faire',
         'observations'
+    ];
+
+    protected $casts = [
+        'date_cours' => 'date',
     ];
     
     public function classe()
@@ -27,6 +32,11 @@ class CahierTexte extends Model
     public function professeur()
     {
         return $this->belongsTo(Professeur::class);
+    }
+
+    public function matiere()
+    {
+        return $this->belongsTo(Matiere::class);
     }
 
      protected function dateCours(): Attribute

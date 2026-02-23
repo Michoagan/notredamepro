@@ -9,7 +9,7 @@ class Presence extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['eleve_id', 'classe_id', 'date', 'present', 'professeur_id'];
+    protected $fillable = ['eleve_id', 'classe_id', 'date', 'present', 'professeur_id', 'cours_id'];
 
     public function eleve()
     {

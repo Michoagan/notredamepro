@@ -1,0 +1,11 @@
+[
+    {
+        "id": 1,
+        "nom": "Mario",
+        "prenom": "Micho",
+        "email": "michogansegbegnon@gmail.com",
+        "telephone": "0156722257",
+        "created_at": "2026-02-20T18:42:25.000000Z",
+        "updated_at": "2026-02-20T18:42:25.000000Z"
+    }
+]

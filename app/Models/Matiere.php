@@ -38,6 +38,22 @@ class Matiere extends Model
     }
 
     /**
+     * Get the main professor for this subject (if applicable) or the first one.
+     * This is needed because ClasseController eager loads 'matieres.professeur'.
+     */
+    /**
+     * Get the main professor for this subject (if applicable) or the first one.
+     * This is needed because ClasseController eager loads 'matieres.professeur'.
+     */
+    public function professeur()
+    {
+        return $this->belongsToMany(Professeur::class, 'matiere_professeur')
+                    ->withTimestamps()
+                    ->orderBy('matiere_professeur.created_at', 'desc')
+                    ->limit(1);
+    }
+
+    /**
      * Relation avec les classes
      */
    public function classes()

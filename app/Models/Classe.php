@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Model;
 
 
 class Classe extends Model
@@ -90,11 +91,13 @@ public function scopeOrderByNiveau($query)
         'Seconde', 'Première', 'Terminale'
     ];
     
-    $orderString = implode(',', array_map(function($niveau) {
-        return "'" . $niveau . "'";
-    }, $niveauxOrder));
+    $caseString = "CASE niveau";
+    foreach ($niveauxOrder as $index => $niveau) {
+        $caseString .= " WHEN '" . $niveau . "' THEN " . ($index + 1);
+    }
+    $caseString .= " ELSE 99 END";
     
-    return $query->orderByRaw("FIELD(niveau, $orderString)");
+    return $query->orderByRaw($caseString);
 }
 
     /**
@@ -163,6 +166,11 @@ public function scopeOrderByNiveau($query)
     public function cahierTextes()
     {
         return $this->hasMany(CahierTexte::class);
+    }
+
+    public function evenements(): BelongsToMany
+    {
+        return $this->belongsToMany(Evenement::class, 'classe_evenement');
     }
     
        public function contributions(): HasMany

@@ -1,0 +1,600 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/api_service.dart';
+import '../models/professeur.dart';
+import '../models/dashboard_stats.dart';
+import '../models/classe.dart';
+import '../models/moyenne.dart';
+import '../widgets/classe_card.dart';
+import '../widgets/moyenne_table.dart';
+import '../widgets/custom_drawer.dart';
+import '../widgets/quick_action_card.dart';
+import '../utils/theme.dart';
+import 'notes_screen.dart';
+import 'cahier_texte_screen.dart';
+import 'presences_screen.dart';
+import '../models/communique.dart';
+import '../models/evenement.dart';
+import '../widgets/communique_card.dart';
+import '../widgets/event_card.dart';
+import 'parent_contact_screen.dart';
+import '../widgets/modern_dashboard_header.dart';
+import '../widgets/premium_stat_card.dart';
+import 'change_code_screen.dart';
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  _DashboardScreenState createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  late Professeur _professeur;
+  late DashboardStats _stats;
+  late List<Classe> _classes;
+  List<Communique> _communiques = [];
+  List<Evenement> _evenements = [];
+  bool _isLoading = true;
+  String _errorMessage = '';
+  int _selectedClasseId = 0;
+  int _selectedTrimestre = 1;
+  List<Moyenne> _moyennes = [];
+  bool _loadingMoyennes = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final result = await apiService.getDashboardData();
+
+      if (mounted) {
+        if (result['success'] == true) {
+          setState(() {
+            _professeur = result['professeur'];
+            _stats = result['stats'];
+            _classes = result['classes'] ?? [];
+            _communiques = result['communiques'] ?? [];
+            _evenements = result['evenements'] ?? [];
+            _isLoading = false;
+            _errorMessage = '';
+          });
+        } else {
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                result['message'] ?? 'Erreur de chargement des données';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Erreur de connexion: ${e.toString()}';
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoyennes() async {
+    if (_selectedClasseId == 0) return;
+
+    setState(() {
+      _loadingMoyennes = true;
+    });
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final moyennes = await apiService.calculerMoyennes(
+        classeId: _selectedClasseId,
+        trimestre: _selectedTrimestre,
+        matiereId: _professeur.matiereId,
+      );
+
+      if (mounted) {
+        setState(() {
+          _moyennes = moyennes;
+          _loadingMoyennes = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingMoyennes = false;
+          _moyennes = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Erreur lors du chargement des moyennes: ${e.toString()}')));
+      }
+    }
+  }
+
+  void _onClasseSelected(int? value) {
+    if (value != null) {
+      setState(() {
+        _selectedClasseId = value;
+      });
+      _loadMoyennes();
+    }
+  }
+
+  void _onTrimestreSelected(int? value) {
+    if (value != null) {
+      setState(() {
+        _selectedTrimestre = value;
+      });
+      _loadMoyennes();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: _scaffoldKey,
+      drawer: _isLoading ? null : CustomDrawer(professeur: _professeur),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage.isNotEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 64, color: AppTheme.error),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage,
+                        style: const TextStyle(
+                            fontSize: 16, color: AppTheme.error),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadDashboardData,
+                        child: const Text('Réessayer'),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadDashboardData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 1. Modern Header with Settings integrated
+                        ModernDashboardHeader(
+                          professeur: _professeur,
+                          onMenuPressed: () {
+                            _scaffoldKey.currentState?.openDrawer();
+                          },
+                          onSettingsPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ChangeCodeScreen()),
+                            );
+                          },
+                          onNotificationPressed: () {
+                            // Show notifications
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Aucune nouvelle notification')),
+                            );
+                          },
+                        ),
+
+                        // Negative offset to pull stats up over the header slightly
+                        Transform.translate(
+                          offset: const Offset(0, -28),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Column(
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: PremiumStatCard(
+                                        label: 'Classes',
+                                        value: '${_stats.classesCount}',
+                                        icon: Icons.class_,
+                                        baseColor:
+                                            const Color(0xFF3B82F6), // Blue 500
+                                        subLabel: 'Total',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: PremiumStatCard(
+                                        label: 'Élèves',
+                                        value: '${_stats.elevesCount}',
+                                        icon: Icons.people,
+                                        baseColor:
+                                            const Color(0xFFF43F5E), // Rose 500
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: PremiumStatCard(
+                                        label: 'Heures',
+                                        value: '${_stats.coursSemaine}h',
+                                        icon: Icons.access_time,
+                                        baseColor: const Color(
+                                            0xFF8B5CF6), // Violet 500
+                                        subLabel: 'Semaine',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: PremiumStatCard(
+                                        label: 'Matière',
+                                        value: _professeur.matiere.length > 5
+                                            ? '${_professeur.matiere.substring(0, 5)}..'
+                                            : _professeur.matiere,
+                                        icon: Icons.analytics,
+                                        baseColor: const Color(
+                                            0xFF10B981), // Emerald 500
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Section Spacing adjustment after overlap
+                        const SizedBox(height: 8),
+
+                        // Quick Actions
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text(
+                            'Accès Rapide',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            alignment: WrapAlignment.spaceBetween,
+                            children: [
+                              QuickActionCard(
+                                title: 'Saisir\nNotes',
+                                icon: Icons.edit_note,
+                                color: AppTheme.secondary,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const NotesScreen()),
+                                  );
+                                },
+                              ),
+                              QuickActionCard(
+                                title: 'Cahier\nde Texte',
+                                icon: Icons.menu_book,
+                                color: AppTheme.primary,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const CahierTexteScreen()),
+                                  );
+                                },
+                              ),
+                              QuickActionCard(
+                                title: 'Faire\nl\'Appel',
+                                icon: Icons.fact_check_outlined,
+                                color: Colors.orange,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const PresencesScreen()),
+                                  );
+                                },
+                              ),
+                              QuickActionCard(
+                                title: 'Contacts\nParents',
+                                icon: Icons.contact_phone_outlined,
+                                color: AppTheme.accent,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const ParentContactScreen()),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // Agenda Section
+                        if (_evenements.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Agenda',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                // TextButton(
+                                //   onPressed: () {},
+                                //   child: const Text('Tout voir'),
+                                // ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 130, // Slightly more space for event cards
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 4),
+                              itemCount: _evenements.length,
+                              itemBuilder: (context, index) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 16),
+                                  child: EventCard(
+                                    event: _evenements[index],
+                                    isFeatured: true,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 40),
+                        ],
+
+                        // Communiques Section
+                        if (_communiques.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              'Actualités',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            itemCount: _communiques.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: CommuniqueCard(
+                                  communique: _communiques[index],
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+
+                        // Mes Classes
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text(
+                            'Mes Classes',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _classes.isEmpty
+                            ? Container(
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 24),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 32, horizontal: 24),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.surface,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border:
+                                      Border.all(color: Colors.grey.shade200),
+                                ),
+                                child: const Center(
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.class_outlined,
+                                          size: 48, color: Colors.grey),
+                                      SizedBox(height: 16),
+                                      Text(
+                                        'Aucune classe assignée',
+                                        style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : SizedBox(
+                                height:
+                                    210, // Adjusted for typical content height
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 4),
+                                  itemCount: _classes.length,
+                                  itemBuilder: (context, index) {
+                                    return Container(
+                                      width: 280, // Slightly wider class card
+                                      margin: const EdgeInsets.only(right: 16),
+                                      child:
+                                          ClasseCard(classe: _classes[index]),
+                                    );
+                                  },
+                                ),
+                              ),
+
+                        const SizedBox(height: 40),
+
+                        // Moyennes Section (Simple Card wrapper for existing table)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Consultation Rapide',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 16),
+                              Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: DropdownButtonFormField<int>(
+                                              initialValue: _selectedClasseId,
+                                              items: [
+                                                const DropdownMenuItem(
+                                                  value: 0,
+                                                  child: Text(
+                                                      'Choisir une classe',
+                                                      style: TextStyle(
+                                                          fontSize: 14)),
+                                                ),
+                                                ..._classes.map(
+                                                  (classe) => DropdownMenuItem(
+                                                    value: classe.id,
+                                                    child: Text(
+                                                      classe.displayName,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                          fontSize: 14),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                              onChanged: _onClasseSelected,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Classe',
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.arrow_drop_down,
+                                                  color:
+                                                      AppTheme.textSecondary),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: DropdownButtonFormField<int>(
+                                              initialValue: _selectedTrimestre,
+                                              items: [1, 2, 3]
+                                                  .map(
+                                                    (trimestre) =>
+                                                        DropdownMenuItem(
+                                                      value: trimestre,
+                                                      child: Text(
+                                                          'Trimestre $trimestre',
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontSize:
+                                                                      14)),
+                                                    ),
+                                                  )
+                                                  .toList(),
+                                              onChanged: _onTrimestreSelected,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Trimestre',
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.arrow_drop_down,
+                                                  color:
+                                                      AppTheme.textSecondary),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 24),
+                                      if (_loadingMoyennes)
+                                        const Center(
+                                            child: Padding(
+                                          padding: EdgeInsets.all(32.0),
+                                          child: CircularProgressIndicator(),
+                                        ))
+                                      else if (_selectedClasseId > 0 &&
+                                          _moyennes.isNotEmpty)
+                                        MoyenneTable(moyennes: _moyennes)
+                                      else
+                                        Center(
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(32.0),
+                                            child: Column(
+                                              children: [
+                                                Icon(Icons.analytics_outlined,
+                                                    size: 48,
+                                                    color:
+                                                        Colors.grey.shade300),
+                                                const SizedBox(height: 16),
+                                                Text(
+                                                  _selectedClasseId == 0
+                                                      ? 'Sélectionnez une classe pour voir les moyennes'
+                                                      : 'Aucune donnée disponible',
+                                                  style: TextStyle(
+                                                      color:
+                                                          Colors.grey.shade500,
+                                                      fontWeight:
+                                                          FontWeight.w500),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+    );
+  }
+}

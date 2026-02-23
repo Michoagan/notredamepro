@@ -1,0 +1,16 @@
+[
+    {
+        "id": 1,
+        "nom": "polycarpe",
+        "prenom": "HOUNTOGAN",
+        "email": "michoagansegbegnon@gmail.com",
+        "telephone_parent": "0156722257"
+    },
+    {
+        "id": 2,
+        "nom": "mario",
+        "prenom": "HOUNTOGAN",
+        "email": "michoagansegbegnon@gmail.com",
+        "telephone_parent": "0156722257"
+    }
+]

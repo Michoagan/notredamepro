@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Setting;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class SettingsController extends Controller
+{
+    /**
+     * Display a listing of the settings.
+     */
+    public function index()
+    {
+        // Return key-value pairs
+        $settings = Setting::all()->pluck('value', 'key');
+        return response()->json($settings);
+    }
+
+    /**
+     * Update the specified settings.
+     */
+    public function update(Request $request)
+    {
+        $data = $request->validate([
+            'annee_scolaire_debut' => 'nullable|date',
+            'annee_scolaire_fin' => 'nullable|date|after:annee_scolaire_debut',
+            'trimestre_1_debut' => 'nullable|date',
+            'trimestre_1_fin' => 'nullable|date|after:trimestre_1_debut',
+            'trimestre_2_debut' => 'nullable|date',
+            'trimestre_2_fin' => 'nullable|date|after:trimestre_2_debut',
+            'trimestre_3_debut' => 'nullable|date',
+            'trimestre_3_fin' => 'nullable|date|after:trimestre_3_debut',
+        ]);
+
+        DB::transaction(function () use ($data) {
+            foreach ($data as $key => $value) {
+                if ($value !== null) {
+                    Setting::updateOrCreate(
+                        ['key' => $key],
+                        ['value' => $value]
+                    );
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Paramètres mis à jour avec succès.',
+            'settings' => Setting::all()->pluck('value', 'key')
+        ]);
+    }
+}

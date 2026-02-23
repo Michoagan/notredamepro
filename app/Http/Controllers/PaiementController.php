@@ -6,6 +6,14 @@ use App\Models\Eleve;
 use App\Models\Paiement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\Color\Color;
+use Endroid\QrCode\Encoding\Encoding;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\RoundBlockSizeMode;
 
 class PaiementController extends Controller
 {
@@ -240,12 +248,47 @@ class PaiementController extends Controller
 
     public function generateReceipt($id)
     {
-        $paiement = Paiement::with(['eleve', 'eleve.classe', 'eleve.parent'])->findOrFail($id);
+        $paiement = Paiement::with(['eleve', 'eleve.classe', 'eleve.tuteurs'])->findOrFail($id);
 
-        return response()->json([
-            'success' => true,
+        if ($paiement->statut !== 'success') {
+            return response()->json(['success' => false, 'message' => 'Le reçu n\'est disponible que pour les paiements réussis.'], 400);
+        }
+
+        // Generate QR code locally via endroid/qr-code
+        $qrData = [
+            'recu_id' => $paiement->id,
+            'reference' => $paiement->reference_externe ?? $paiement->reference,
+            'eleve' => $paiement->eleve->nom . ' ' . $paiement->eleve->prenom,
+            'montant' => $paiement->montant,
+            'date' => $paiement->date_paiement ? \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y H:i') : null,
+            'statut' => 'Payé'
+        ];
+
+        $qrText = json_encode($qrData);
+
+        // QR Code config
+        $qrCode = QrCode::create($qrText)
+            ->setEncoding(new Encoding('UTF-8'))
+            ->setErrorCorrectionLevel(ErrorCorrectionLevel::Low)
+            ->setSize(100)
+            ->setMargin(10)
+            ->setRoundBlockSizeMode(RoundBlockSizeMode::Margin)
+            ->setForegroundColor(new Color(0, 0, 0))
+            ->setBackgroundColor(new Color(255, 255, 255));
+
+        $writer = new PngWriter();
+        $qrCodeResult = $writer->write($qrCode);
+        $qrCodeImage = base64_encode($qrCodeResult->getString());
+
+        $pdf = Pdf::loadView('pdf.receipt', [
             'paiement' => $paiement,
+            'qrCodeImage' => $qrCodeImage,
+            'date_generation' => now()->format('d/m/Y H:i:s')
         ]);
+
+        $filename = "recu_paiement_{$paiement->id}_{$paiement->eleve->nom}.pdf";
+
+        return $pdf->download($filename);
     }
 
     // Méthode pour vérifier manuellement le statut d'un paiement

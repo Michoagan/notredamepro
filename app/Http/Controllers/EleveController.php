@@ -111,7 +111,7 @@ class EleveController extends Controller
             'sexe' => 'required|in:M,F',
             'adresse' => 'nullable|string',
             'telephone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|unique:eleves,email',
+            'email' => 'nullable|email',
             'nom_parent' => 'required|string|max:255',
             'telephone_parent' => 'required|string|max:20',
             'classe_id' => 'required|exists:classes,id',
@@ -119,6 +119,7 @@ class EleveController extends Controller
         ]);
 
         if ($validator->fails()) {
+            Log::error('Erreur validation élève:', $validator->errors()->toArray());
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur de validation',
@@ -178,139 +179,105 @@ class EleveController extends Controller
     /**
  * Importer des élèves via fichier CSV/Excel simple
  */
-public function import(Request $request)
-{
-    $request->validate([
-        'fichier_excel' => 'required|file|mimes:txt,csv,xlsx,xls'
-    ]);
+    /**
+     * Importer des élèves via fichier CSV
+     */
+    public function import(Request $request)
+    {
+        $request->validate([
+            'fichier_excel' => 'required|file|mimes:csv,txt'
+        ]);
 
-    DB::beginTransaction();
+        DB::beginTransaction();
 
-    try {
-        $file = $request->file('fichier_excel');
-        $extension = $file->getClientOriginalExtension();
-        $filePath = $file->getRealPath();
-        
-        $data = [];
-        
-        if ($extension === 'csv') {
+        try {
+            $file = $request->file('fichier_excel');
+            $filePath = $file->getRealPath();
+            
+            // Lire le fichier en tant que CSV
             $data = $this->readCSV($filePath);
-        } elseif (in_array($extension, ['xlsx', 'xls'])) {
-            $data = $this->convertExcelToCSV($filePath);
-        } else {
-            throw new \Exception("Format de fichier non supporté: " . $extension);
-        }
-        
-        // Traiter les données
-        $importedCount = 0;
-        $errors = [];
-        
-        foreach ($data as $index => $row) {
-            try {
-                if ($index === 0 && $this->isHeaderRow($row)) {
-                    continue; // Skip header row
+            
+            if (count($data) < 1) {
+                throw new \Exception("Le fichier est vide ou mal formaté.");
+            }
+
+            // Traiter les données
+            $importedCount = 0;
+            $errors = [];
+            
+            // Detecter si la première ligne est un entête
+            $header = $data[0];
+            $startIndex = $this->isHeaderRow($header) ? 1 : 0;
+
+            for ($i = $startIndex; $i < count($data); $i++) {
+                $row = $data[$i];
+                // Skip empty rows
+                if (empty(array_filter($row))) continue;
+
+                try {
+                    $this->createEleveFromRow($row);
+                    $importedCount++;
+                } catch (\Exception $e) {
+                    $errors[] = "Ligne " . ($i + 1) . ": " . $e->getMessage();
                 }
-                
-                $this->createEleveFromRow($row);
-                $importedCount++;
-                
-            } catch (\Exception $e) {
-                $errors[] = "Ligne " . ($index + 1) . ": " . $e->getMessage();
+            }
+            
+            DB::commit();
+            
+            $message = $importedCount . " élève(s) importé(s) avec succès.";
+            if (!empty($errors)) {
+                $message .= " Erreurs: " . implode(', ', $errors);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => $message
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erreur lors de l\'importation: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'importation: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Lire un fichier CSV de manière robuste
+     */
+    private function readCSV($filePath)
+    {
+        $data = [];
+        if (($handle = fopen($filePath, 'r')) !== false) {
+            while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                $data[] = $row;
+            }
+            fclose($handle);
+        }
+        return $data;
+    }
+
+    /**
+     * Vérifier si c'est une ligne d'en-tête
+     */
+    private function isHeaderRow($row)
+    {
+        if (empty($row)) return false;
+        
+        $headerKeywords = ['matricule', 'nom', 'prenom', 'classe', 'date', 'naissance', 'sexe'];
+        $rowString = strtolower(implode(' ', $row));
+        
+        foreach ($headerKeywords as $keyword) {
+            if (strpos($rowString, $keyword) !== false) {
+                return true;
             }
         }
         
-        DB::commit();
-        
-        $message = $importedCount . " élève(s) importé(s) avec succès.";
-        if (!empty($errors)) {
-            $message .= " Erreurs: " . implode(', ', $errors);
-        }
-        
-        return response()->json([
-            'success' => true,
-            'message' => $message
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        Log::error('Erreur lors de l\'importation: ' . $e->getMessage());
-        
-        return response()->json([
-            'success' => false,
-            'message' => 'Erreur lors de l\'importation: ' . $e->getMessage()
-        ], 500);
+        return false;
     }
-}
-
-/**
- * Lire un fichier CSV
- */
-private function readCSV($filePath)
-{
-    $data = [];
-    $handle = fopen($filePath, 'r');
-    
-    while (($row = fgetcsv($handle, 1000, ',')) !== false) {
-        $data[] = $row;
-    }
-    
-    fclose($handle);
-    return $data;
-}
-
-/**
- * Convertir Excel en CSV (méthode simple)
- */
-private function convertExcelToCSV($filePath)
-{
-    // Méthode basique pour les petits fichiers
-    // Pour les fichiers Excel complexes, une bibliothèque serait nécessaire
-    $csvPath = $filePath . '.csv';
-    
-    // Utilisez une commande système si disponible
-    if ($this->commandExists('xlsx2csv')) {
-        shell_exec("xlsx2csv \"{$filePath}\" \"{$csvPath}\"");
-    } elseif ($this->commandExists('ssconvert')) {
-        shell_exec("ssconvert \"{$filePath}\" \"{$csvPath}\"");
-    } else {
-        throw new \Exception("Conversion Excel non supportée sur ce serveur");
-    }
-    
-    if (!file_exists($csvPath)) {
-        throw new \Exception("Échec de la conversion Excel vers CSV");
-    }
-    
-    $data = $this->readCSV($csvPath);
-    unlink($csvPath);
-    
-    return $data;
-}
-
-/**
- * Vérifier si une commande système existe
- */
-private function commandExists($command)
-{
-    $output = shell_exec("which $command");
-    return !empty($output);
-}
-
-/**
- * Vérifier si c'est une ligne d'en-tête
- */
-private function isHeaderRow($row)
-{
-    $headerKeywords = ['matricule', 'nom', 'prenom', 'classe', 'date', 'naissance', 'sexe'];
-    $firstCell = strtolower(implode(' ', $row));
-    
-    foreach ($headerKeywords as $keyword) {
-        if (strpos($firstCell, $keyword) !== false) {
-            return true;
-        }
-    }
-    
-    return false;
-}
 
 /**
  * Créer un élève à partir d'une ligne de données
@@ -377,7 +344,7 @@ public function edit(Eleve $eleve)
             'sexe' => 'required|in:M,F',
             'adresse' => 'nullable|string',
             'telephone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|unique:eleves,email,' . $eleve->id,
+            'email' => 'nullable|email',
             'nom_parent' => 'required|string|max:255',
             'telephone_parent' => 'required|string|max:20',
             'classe_id' => 'required|exists:classes,id',

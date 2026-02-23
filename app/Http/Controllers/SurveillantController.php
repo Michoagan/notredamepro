@@ -153,39 +153,46 @@ class SurveillantController extends Controller
         return response()->json($plaintes);
     }
 
-   public function storeEvenement(Request $request)
-{
-    $request->validate([
-        'titre' => 'required|string|max:255',
-        'description' => 'required|string',
-        'date_debut' => 'required|date',
-        'date_fin' => 'required|date|after:date_debut',
-        'lieu' => 'nullable|string|max:255',
-        'classes' => 'nullable|array', // Changement de 'participants' à 'classes'
-        'classes.*' => 'exists:classes,id' // Validation que les classes existent
-    ]);
+    public function storeEvenement(Request $request)
+    {
+        $request->validate([
+            'titre' => 'required|string|max:255',
+            'description' => 'required|string',
+            'date_debut' => 'required|date',
+            'date_fin' => 'required|date|after:date_debut',
+            'lieu' => 'nullable|string|max:255',
+            'type' => 'required|string',
+            'pour_tous' => 'boolean',
+            'classes' => 'nullable|array',
+            'classes.*' => 'exists:classes,id'
+        ]);
 
-    $evenement = Evenement::create([
-        'titre' => $request->titre,
-        'description' => $request->description,
-        'date_debut' => $request->date_debut,
-        'date_fin' => $request->date_fin,
-        'lieu' => $request->lieu,
-        'classes' => $request->classes, // Stocker les IDs des classes
-        'createur_id' => Auth::guard('direction')->id(),
-        'createur_type' => Direction::class
-    ]);
+        $evenement = Evenement::create([
+            'titre' => $request->titre,
+            'description' => $request->description,
+            'date_debut' => $request->date_debut,
+            'date_fin' => $request->date_fin,
+            'lieu' => $request->lieu,
+            'type' => $request->type,
+            'pour_tous' => $request->pour_tous ?? false,
+            // 'createur_id' => Auth::guard('direction')->id(), // Champs non présents dans la migration originale, à vérifier si nécessaire ou utiliser Auth
+            // 'createur_type' => Direction::class
+        ]);
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Événement créé avec succès',
-        'evenement' => $evenement
-    ]);
-}
+        if (!$evenement->pour_tous && $request->has('classes')) {
+            $evenement->classes()->sync($request->classes);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Événement créé avec succès',
+            'evenement' => $evenement->load('classes')
+        ]);
+    }
 
     public function evenements()
     {
-        $evenements = Evenement::orderBy('date_debut', 'desc')->get();
+        $evenements = Evenement::with('classes')->orderBy('date_debut', 'desc')->get();
         return response()->json($evenements);
     }
 
@@ -197,5 +204,34 @@ class SurveillantController extends Controller
             ->get();
 
         return response()->json($evenements);
+    }
+
+    public function getPresencesEleves(Request $request)
+    {
+        $date = $request->get('date', now()->format('Y-m-d'));
+        $classeId = $request->get('classe_id');
+
+        $query = \App\Models\Presence::with(['eleve', 'classe'])
+            ->whereDate('date', $date);
+
+        if ($classeId) {
+            $query->where('classe_id', $classeId);
+        }
+
+        $presences = $query->get();
+
+        return response()->json($presences);
+    }
+
+    public function getPresencesProfesseurs(Request $request)
+    {
+        $date = $request->get('date', now()->format('Y-m-d'));
+
+        $presences = \App\Models\PresenceProfesseur::with('professeur')
+            ->whereDate('date', $date)
+            ->get();
+
+        return response()->json($presences);
+
     }
 }

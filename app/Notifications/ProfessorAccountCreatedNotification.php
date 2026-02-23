@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -12,6 +11,7 @@ class ProfessorAccountCreatedNotification extends Notification
     use Queueable;
 
     public $professeur;
+
     public $personalCode;
 
     /**
@@ -38,12 +38,12 @@ class ProfessorAccountCreatedNotification extends Notification
     {
         return (new MailMessage)
             ->subject('Votre compte professeur a été créé - Plateforme Éducative')
-            ->greeting('Bonjour ' . $this->professeur->first_name . ' ' . $this->professeur->last_name . ' !')
+            ->greeting('Bonjour '.$this->professeur->first_name.' '.$this->professeur->last_name.' !')
             ->line('Votre compte professeur a été créé avec succès sur notre plateforme.')
             ->line('Voici vos informations de connexion :')
-            ->line('**Email :** ' . $this->professeur->email)
-            ->line('**Code personnel :** ' . $this->personalCode) // Code en clair affiché ici
-            ->line('**Matière :** ' . $this->professeur->matiere)
+            ->line('**Email :** '.$this->professeur->email)
+            ->line('**Code personnel :** '.$this->personalCode) // Code en clair affiché ici
+            ->line('**Matière :** '.$this->professeur->matiere)
             ->action('Se connecter', url('/professeur/login'))
             ->line('Nous vous recommandons de changer votre code personnel après votre première connexion.')
             ->line('Si vous n\'avez pas demandé la création de ce compte, veuillez ignorer cet email.')

@@ -3,12 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Eleve;
-use App\Models\ParentModel;
+use App\Models\Tuteur;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class TuteurController extends Controller
 {
@@ -17,8 +18,8 @@ class TuteurController extends Controller
         $validator = Validator::make($request->all(), [
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
-            'email' => 'required|email|unique:parents,email',
-            'telephone' => 'required|string|unique:parents,telephone|regex:/^[0-9+\s()\-]{10,20}$/',
+            'email' => 'required|email|unique:tuteurs,email',
+            'telephone' => 'required|string|unique:tuteurs,telephone|regex:/^[0-9+\s()\-]{10,20}$/',
             'password' => 'required|string|min:8|confirmed|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/',
         ], [
             'password.regex' => 'Le mot de passe doit contenir au moins une majuscule, une minuscule, un chiffre et un caractère spécial.',
@@ -37,7 +38,7 @@ class TuteurController extends Controller
         $telephone = preg_replace('/[^0-9]/', '', $request->telephone);
 
         // Vérifier si le parent est associé à au moins un élève
-        $elevesAssocies = Eleve::where('email_parent', $request->email)
+        $elevesAssocies = Eleve::where('email', $request->email)
             ->orWhere('telephone_parent', $request->telephone)
             ->orWhere('telephone_parent', $telephone) // Vérifier aussi le format normalisé
             ->get();
@@ -50,13 +51,13 @@ class TuteurController extends Controller
         }
 
         // Vérifier que l'email n'est pas déjà utilisé (double vérification)
-        if (ParentModel::where('email', $request->email)->exists()) {
+        if (Tuteur::where('email', $request->email)->exists()) {
             return response()->json(['success' => false, 'message' => 'Cet email est déjà utilisé.'], 409);
         }
 
         try {
             // Créer le compte parent
-            $parent = ParentModel::create([
+            $parent = Tuteur::create([
                 'nom' => Str::title($request->nom),
                 'prenom' => Str::title($request->prenom),
                 'email' => Str::lower($request->email),
@@ -115,7 +116,7 @@ class TuteurController extends Controller
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
+            'email' => 'required|string', // Peut être un email ou un téléphone
             'password' => 'required|string',
         ]);
 
@@ -127,15 +128,18 @@ class TuteurController extends Controller
             ], 422);
         }
 
-        $credentials = $request->only('email', 'password');
-        $remember = $request->has('remember');
+        $identifiant = Str::lower($request->email);
+        $telephoneFormat = preg_replace('/[^0-9]/', '', $request->email);
 
-        // Vérifier le parent
-        $parent = ParentModel::where('email', $request->email)->first();
+        // Vérifier le parent par email ou téléphone
+        $parent = Tuteur::where('email', $identifiant)
+            ->orWhere('telephone', $telephoneFormat)
+            ->orWhere('telephone', $request->email)
+            ->first();
 
         // Vérifier si le parent existe et si le mot de passe est correct
         if (! $parent || ! Hash::check($request->password, $parent->password)) {
-            return response()->json(['success' => false, 'message' => 'Identifiants incorrects.'], 401);
+            return response()->json(['success' => false, 'message' => 'Identifiant ou mot de passe incorrect.'], 401);
         }
 
         // Vérifier si le parent est associé à au moins un élève
@@ -201,31 +205,109 @@ class TuteurController extends Controller
 
     // showLinkRequestForm removed
 
-    // Méthode pour traiter la demande de réinitialisation
-    public function sendResetLinkEmail(Request $request)
+    /**
+     * Demande de réinitialisation de mot de passe (Public)
+     */
+    public function forgotPassword(Request $request)
     {
         $request->validate(['email' => 'required|email']);
 
-        // Vérifier que l'email appartient à un parent
-        $parent = ParentModel::where('email', $request->email)->first();
+        $parent = Tuteur::where('email', $request->email)->first();
 
         if (! $parent) {
-            return response()->json(['success' => false, 'message' => 'Aucun compte parent trouvé avec cet email.'], 404);
+            // Pour sécurité, on dit quand même envoyé
+            return response()->json([
+                'success' => true,
+                'message' => 'Si cet email existe, un code de réinitialisation a été envoyé.',
+            ]);
         }
 
-        // Générer et enregistrer un token de réinitialisation
-        $token = Str::random(60);
-        DB::table('password_reset_tokens')->updateOrInsert(
+        // Générer un code à 6 chiffres
+        $code = rand(100000, 999999);
+
+        // Stocker dans password_reset_codes (table commune ou nouvelle)
+        \App\Models\PasswordResetCode::updateOrCreate(
             ['email' => $request->email],
-            ['token' => Hash::make($token), 'created_at' => now()]
+            ['code' => $code, 'created_at' => now()]
         );
 
         // Envoyer l'email de réinitialisation
-        // Mail::to($request->email)->send(new ParentPasswordReset($token));
+        // Mail::to($request->email)->send(new ParentPasswordResetCode($code));
+        
+        // TEMPORAIRE: Log pour démo sans mailer configuré
+        \Illuminate\Support\Facades\Log::info("PARENT RESET CODE pour {$parent->email}: $code");
 
         return response()->json([
             'success' => true,
-            'message' => 'Un lien de réinitialisation a été envoyé à votre adresse email.',
+            'message' => 'Un code de réinitialisation a été envoyé à votre adresse email.',
+            'debug_code' => $code, // A RETIRER EN PROD
+        ]);
+    }
+
+    /**
+     * Réinitialiser le mot de passe avec le token (Public)
+     */
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|numeric',
+            'password' => 'required|string|min:8|confirmed|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/',
+        ], [
+            'password.regex' => 'Le mot de passe doit contenir au moins une majuscule, une minuscule, un chiffre et un caractère spécial.',
+        ]);
+
+        $resetEntry = \App\Models\PasswordResetCode::where('email', $request->email)
+            ->where('code', $request->code)
+            ->first();
+
+        if (! $resetEntry || $resetEntry->created_at->addMinutes(15)->isPast()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Code invalide ou expiré.',
+            ], 400);
+        }
+
+        $parent = Tuteur::where('email', $request->email)->firstOrFail();
+        $parent->password = Hash::make($request->password);
+        $parent->save();
+
+        // Supprimer le code utilisé
+        $resetEntry->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Votre mot de passe a été réinitialisé avec succès. Vous pouvez vous connecter.',
+        ]);
+    }
+
+    /**
+     * Changer le mot de passe (Authentifié)
+     */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'new_password' => 'required|string|min:8|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/',
+        ], [
+            'new_password.regex' => 'Le nouveau mot de passe doit contenir au moins une majuscule, une minuscule, un chiffre et un caractère spécial.',
+        ]);
+
+        $parent = Auth::user();
+
+        if (! Hash::check($request->current_password, $parent->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Le mot de passe actuel est incorrect.',
+            ], 400);
+        }
+
+        $parent->password = Hash::make($request->new_password);
+        $parent->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Mot de passe modifié avec succès.',
         ]);
     }
 
@@ -237,26 +319,70 @@ class TuteurController extends Controller
         // Récupérer les élèves associés à ce parent
         $eleves = Eleve::whereHas('tuteurs', function ($query) use ($parent) {
             $query->where('tuteur_id', $parent->id);
-        })->with(['notes' => function ($query) {
-            $query->orderBy('created_at', 'desc')->take(3);
-        }])->get();
+        })->with(['classe'])->get();
 
-        // Récupérer les notes récentes pour tous les enfants
-        $recentNotes = Note::whereIn('eleve_id', $eleves->pluck('id'))
-            ->orderBy('created_at', 'desc')
-            ->take(5)
-            ->get();
+        $elevesData = $eleves->map(function ($eleve) {
+            // 1. Dernières Notes
+            $notes = \App\Models\Note::where('eleve_id', $eleve->id)
+                ->with(['matiere'])
+                ->orderBy('updated_at', 'desc')
+                ->take(3)
+                ->get()
+                ->map(function ($note) {
+                    $type = 'Évaluation';
+                    $valeur = 0;
+                    if (!is_null($note->deuxieme_devoir)) { $type = 'Devoir 2'; $valeur = $note->deuxieme_devoir; }
+                    elseif (!is_null($note->premier_devoir)) { $type = 'Devoir 1'; $valeur = $note->premier_devoir; }
+                    elseif (!is_null($note->quatrieme_interro)) { $type = 'Interro 4'; $valeur = $note->quatrieme_interro; }
+                    elseif (!is_null($note->troisieme_interro)) { $type = 'Interro 3'; $valeur = $note->troisieme_interro; }
+                    elseif (!is_null($note->deuxieme_interro)) { $type = 'Interro 2'; $valeur = $note->deuxieme_interro; }
+                    elseif (!is_null($note->premier_interro)) { $type = 'Interro 1'; $valeur = $note->premier_interro; }
 
-        // Récupérer les événements à venir
-        $evenements = Evenement::where('date', '>=', now())
-            ->orderBy('date', 'asc')
+                    return [
+                        'matiere' => $note->matiere ? $note->matiere->nom : 'Mat. Générale',
+                        'type' => $type,
+                        'note' => (float)$valeur,
+                        'date' => $note->updated_at->format('d M'),
+                    ];
+                });
+
+            // 2. Présences
+            $presences = \App\Models\Presence::where('eleve_id', $eleve->id)->get();
+            $totalJours = $presences->count();
+            $joursPresents = $presences->where('present', true)->count();
+            $tauxPresence = $totalJours > 0 ? ($joursPresents / $totalJours) * 100 : 100;
+
+            // 3. Finances
+            $contribution = $eleve->classe ? $eleve->classe->cout_contribution : 0;
+            $paiements = \App\Models\Paiement::where('eleve_id', $eleve->id)
+                ->where('statut', 'success')
+                ->sum('montant');
+            $soldeRestant = max(0, $contribution - $paiements);
+
+            // Structure de l'élève
+            $eleveArray = $eleve->toArray();
+            $eleveArray['classe'] = $eleve->classe;
+            $eleveArray['recent_notes'] = $notes;
+            $eleveArray['taux_presence'] = round($tauxPresence, 1);
+            $eleveArray['solde_restant'] = $soldeRestant;
+
+            return $eleveArray;
+        });
+
+        // Récupérer les événements (Communiques) récents
+        $evenements = \App\Models\Communique::where('is_published', true)
+            ->orderBy('published_at', 'desc')
             ->take(5)
             ->get();
 
         return response()->json([
             'success' => true,
-            'eleves' => $eleves,
-            'recentNotes' => $recentNotes,
+            'parent' => [ // Envoyer les infos du parent pour l'UI
+                'nom' => $parent->nom,
+                'prenom' => $parent->prenom,
+                'email' => $parent->email,
+            ],
+            'eleves' => $elevesData,
             'evenements' => $evenements,
         ]);
     }
@@ -273,5 +399,97 @@ class TuteurController extends Controller
             'eleve' => $eleve,
         ]);
     }
-    //
+
+    public function getNotes($id)
+    {
+        $parent = Auth::user();
+        $eleve = $parent->eleves()->with('classe')->findOrFail($id);
+
+        $notes = \App\Models\Note::where('eleve_id', $eleve->id)
+            ->with(['matiere', 'professeur'])
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
+        $progression = [];
+        for ($i = 1; $i <= 3; $i++) {
+            $notesTrimestre = $notes->where('trimestre', $i);
+            $avg = $notesTrimestre->avg('moyenne_trimestrielle');
+            $progression[] = $avg ? round($avg, 2) : 0;
+        }
+
+        return response()->json([
+            'success' => true,
+            'eleve' => $eleve,
+            'moyenne_generale' => $progression[0] != 0 ? $progression[0] : 0, // Exemple: T1
+            'progression' => $progression,
+            'recent_notes' => $notes->take(10)->map(function($note) {
+                // Heuristique pour déterminer la note récente à afficher
+                $type = 'Évaluation';
+                $valeur = 0;
+                if (!is_null($note->deuxieme_devoir)) { $type = 'Devoir 2'; $valeur = $note->deuxieme_devoir; }
+                elseif (!is_null($note->premier_devoir)) { $type = 'Devoir 1'; $valeur = $note->premier_devoir; }
+                elseif (!is_null($note->quatrieme_interro)) { $type = 'Interro 4'; $valeur = $note->quatrieme_interro; }
+                elseif (!is_null($note->troisieme_interro)) { $type = 'Interro 3'; $valeur = $note->troisieme_interro; }
+                elseif (!is_null($note->deuxieme_interro)) { $type = 'Interro 2'; $valeur = $note->deuxieme_interro; }
+                elseif (!is_null($note->premier_interro)) { $type = 'Interro 1'; $valeur = $note->premier_interro; }
+
+                return [
+                    'matiere' => $note->matiere ? $note->matiere->nom : 'Mat. Générale',
+                    'type' => $type,
+                    'note' => (float)$valeur,
+                    'date' => $note->updated_at->format('d M'),
+                    'commentaire' => $note->commentaire,
+                ];
+            })->values(),
+        ]);
+    }
+
+    public function contact(Request $request)
+    {
+        $request->validate([
+            'sujet' => 'required|string|max:100',
+            'message' => 'required|string|max:1000',
+        ]);
+
+        $parent = Auth::user();
+
+        // Enregistrer la plainte ou le message dans la base de données
+        // Ou bien l'envoyer par email à l'administration.
+        // Ici on simule une réponse de succès. 
+        \Illuminate\Support\Facades\Log::info("Message de parent {$parent->id}: {$request->sujet} - {$request->message}");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Votre message a bien été envoyé à la direction.',
+        ], 201);
+    }
+
+    public function getPresences($id)
+    {
+        $parent = Auth::user();
+        $eleve = $parent->eleves()->findOrFail($id);
+
+        $presences = \App\Models\Presence::where('eleve_id', $eleve->id)
+            ->with('professeur')
+            ->orderBy('date', 'desc')
+            ->get();
+
+        $totalJours = $presences->count();
+        $joursPresents = $presences->where('present', true)->count();
+        $tauxPresence = $totalJours > 0 ? ($joursPresents / $totalJours) * 100 : 100;
+
+        return response()->json([
+            'success' => true,
+            'eleve' => $eleve,
+            'taux_presence' => round($tauxPresence, 1),
+            'presences' => $presences->take(15)->map(function($p) {
+                return [
+                    'date' => \Carbon\Carbon::parse($p->date)->format('Y-m-d'),
+                    'present' => $p->present,
+                    'motif' => $p->present ? 'Présent' : 'Absent',
+                    'matiere' => $p->professeur ? 'Cours avec ' . $p->professeur->nom : 'Cours', // Mock si cours_id non défini
+                ];
+            })->values(),
+        ]);
+    }
 }

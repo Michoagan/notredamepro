@@ -68,6 +68,7 @@ public function storeCahierTexte(Request $request)
     
     $request->validate([
         'classe_id' => 'required|exists:classes,id',
+        'matiere_id' => 'required|exists:matieres,id',
         'date_cours' => 'required|date',
         'duree_cours' => 'required|integer|min:1|max:4',
         'heure_debut' => 'required',
@@ -90,7 +91,8 @@ public function storeCahierTexte(Request $request)
             [
                 'classe_id' => $request->classe_id,
                 'date_cours' => $request->date_cours,
-                'professeur_id' => $professeur->id
+                'professeur_id' => $professeur->id,
+                'matiere_id' => $request->matiere_id
             ],
             [
                 'duree_cours' => $request->duree_cours,

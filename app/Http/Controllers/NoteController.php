@@ -3,6 +3,14 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Models\Note;
+use App\Models\Classe;
+use App\Models\Matiere;
+use App\Models\Professeur;
+use App\Models\Eleve;
 
 class NoteController extends Controller
 {
@@ -26,18 +34,18 @@ class NoteController extends Controller
         $matiere = null;
         $classe_selectionnee = null;
         $eleves = collect();
-        $notes_existantes = collect();
-
-        // Si une classe est sélectionnée, charger ses matières enseignées par ce professeur
+        // Si une classe est sélectionnée
         if ($request->has('classe_id')) {
-            $classe_selectionnee = $professeur->classes->firstWhere('id', $request->classe_id);
-            if ($classe_selectionnee && $classe_selectionnee->matieres->isNotEmpty()) {
-                $matiere = $classe_selectionnee->matieres->first();
+            $classe_selectionnee = Classe::find($request->classe_id);
+            
+            // Déterminer la matière STRICTEMENT
+            if ($request->has('matiere_id')) {
+                $matiere = Matiere::find($request->matiere_id);
             }
         }
 
-        // Si tous les paramètres sont sélectionnés
-        if ($request->has('classe_id') && $request->has('trimestre') && $classe_selectionnee && $matiere) {
+        // Si tous les paramètres sont présents
+        if ($classe_selectionnee && $matiere && $request->has('trimestre')) {
 
             // Charger les élèves de la classe par ordre alphabétique
             $eleves = $classe_selectionnee->eleves()
@@ -126,9 +134,25 @@ class NoteController extends Controller
         DB::beginTransaction();
 
         try {
+            $notesEnregistrees = 0;
+            $notesIgnorees = 0;
+
             foreach ($request->notes as $eleveId => $valeurNote) {
                 if (! is_null($valeurNote)) {
-                    $note = Note::updateOrCreate(
+                    // Vérifier si une note existe déjà pour cet élève, cette matière, ce trimestre
+                    $existingNote = Note::where('eleve_id', $eleveId)
+                        ->where('classe_id', $request->classe_id)
+                        ->where('matiere_id', $request->matiere_id)
+                        ->where('trimestre', $request->trimestre)
+                        ->first();
+
+                    // Si la note existe et que la colonne cible a déjà une valeur, on refuse la mise à jour
+                    if ($existingNote && !is_null($existingNote->$colonne)) {
+                        $notesIgnorees++;
+                        continue; // On ignore cette note pour ne pas écraser l'existant
+                    }
+
+                    Note::updateOrCreate(
                         [
                             'eleve_id' => $eleveId,
                             'classe_id' => $request->classe_id,
@@ -141,14 +165,24 @@ class NoteController extends Controller
                             'coefficient' => $coefficient,
                         ]
                     );
+                    $notesEnregistrees++;
                 }
             }
 
             DB::commit();
 
+            $message = 'Notes enregistrées avec succès!';
+            if ($notesIgnorees > 0) {
+                $message .= " ($notesIgnorees note(s) ignorée(s) car déjà existantes)";
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Notes enregistrées avec succès!',
+                'message' => $message,
+                'details' => [
+                    'enregistrees' => $notesEnregistrees,
+                    'ignorees' => $notesIgnorees
+                ]
             ]);
 
         } catch (\Exception $e) {

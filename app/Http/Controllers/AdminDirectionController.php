@@ -56,6 +56,40 @@ class AdminDirectionController extends Controller
         ]);
     }
 
+    public function store(Request $request)
+    {
+        $request->validate([
+            'last_name' => ['required', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'gender' => ['required', 'in:M,F'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:direction,email'],
+            'phone' => ['required', 'string', 'max:20'],
+            'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable'],
+            'password' => ['required', 'string', 'min:8'],
+        ]);
+
+        $user = Direction::create([
+            'last_name' => $request->last_name,
+            'first_name' => $request->first_name,
+            'gender' => $request->gender,
+            'birth_date' => $request->birth_date ?? null, // Optional for admin creation
+            'role' => $request->role,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'password' => \Illuminate\Support\Facades\Hash::make($request->password),
+            'is_active' => true, // Auto-active
+            'approved_by_admin' => true, // Auto-approved
+            'approved_at' => now(),
+            'approved_by' => Auth::id(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Utilisateur créé avec succès.',
+            'user' => $user
+        ], 201);
+    }
+
     public function approveAccount(Request $request, $id)
     {
         $request->validate([

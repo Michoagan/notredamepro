@@ -83,6 +83,7 @@ class ClasseController extends Controller
         'matieres' => 'required|array|min:1',
         'matieres.*.nom' => 'required|string|max:255',
         'matieres.*.coefficient' => 'required|integer|min:1|max:10',
+        'matieres.*.volume_horaire' => 'required|integer|min:1',
         'matieres.*.professeur_id' => 'nullable|exists:professeurs,id'
     ]);
 
@@ -111,6 +112,7 @@ class ClasseController extends Controller
             if ($matiere) {
                 $matieresData[$matiere->id] = [
                     'coefficient' => $matiereData['coefficient'],
+                    'volume_horaire' => $matiereData['volume_horaire'] ?? 0,
                     'professeur_id' => $matiereData['professeur_id'] ?? null,
                     'ordre_affichage' => $ordreAffichage++
                 ];
@@ -230,6 +232,7 @@ class ClasseController extends Controller
         'matieres' => 'required|array|min:1',
         'matieres.*.nom' => 'required|string|max:255',
         'matieres.*.coefficient' => 'required|integer|min:1|max:10',
+        'matieres.*.volume_horaire' => 'required|integer|min:1',
         'matieres.*.professeur_id' => 'nullable|exists:professeurs,id'
     ]);
 
@@ -258,6 +261,7 @@ class ClasseController extends Controller
             if ($matiere) {
                 $matieresData[$matiere->id] = [
                     'coefficient' => $matiereData['coefficient'],
+                    'volume_horaire' => $matiereData['volume_horaire'] ?? 0, // New field
                     'professeur_id' => $matiereData['professeur_id'] ?? null,
                     'ordre_affichage' => $ordreAffichage++
                 ];

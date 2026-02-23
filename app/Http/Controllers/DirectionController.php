@@ -15,44 +15,58 @@ class DirectionController extends Controller
 {
     // public function inscrit() removed
 
+    public function directeurDashboard()
+    {
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'eleves_count' => \App\Models\Eleve::count(),
+                    'professeurs_count' => \App\Models\Professeur::count(),
+                    'classes_count' => \App\Models\Classe::count(),
+                    // 'recettes_mois' => \App\Models\Paiement::whereMonth('created_at', now()->month)->sum('montant'),
+                    // 'recettes_total' => \App\Models\Paiement::sum('montant'),
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Erreur chargement dashboard'], 500);
+        }
+    }
+
 
     public function register(Request $request)
-    {
-        $request->validate([
-            'last_name' => ['required', 'string', 'max:255'],
-            'first_name' => ['required', 'string', 'max:255'],
-            'gender' => ['required', 'in:M,F'],
-            'birth_date' => ['required', 'date'],
-            'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:direction'],
-            'phone' => ['required', 'string', 'max:20'],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'redirect_to' => ['sometimes', 'string']
-        ]);
+{
+    $request->validate([
+        'last_name' => ['required', 'string', 'max:255'],
+        'first_name' => ['required', 'string', 'max:255'],
+        'gender' => ['required', 'in:M,F'],
+        'birth_date' => ['required', 'date'],
+        'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable'],
+        'email' => ['required', 'string', 'email', 'max:255', 'unique:direction_users,email'], // ✅ table corrigée
+        'phone' => ['required', 'string', 'max:20'],
+        'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        'redirect_to' => ['sometimes', 'string']
+    ]);
 
-        $user = Direction::create([
-            'last_name' => $request->last_name,
-            'first_name' => $request->first_name,
-            'gender' => $request->gender,
-            'birth_date' => $request->birth_date,
-            'role' => $request->role,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'password' => Hash::make($request->password),
-            'is_active' => false, 
-            'approved_by_admin' => false, 
-        ]);
+    $user = Direction::create([
+        'last_name' => $request->last_name,
+        'first_name' => $request->first_name,
+        'gender' => $request->gender,
+        'birth_date' => $request->birth_date,
+        'role' => $request->role,
+        'email' => $request->email,
+        'phone' => $request->phone,
+        'password' => Hash::make($request->password),
+        'is_active' => false,
+        'approved_by_admin' => false,
+    ]);
 
-        // NE PAS connecter l'utilisateur automatiquement
-        // Auth::guard('direction')->login($user);
-
-        // Envoyer une réponse JSON
-        return response()->json([
-            'success' => true,
-            'message' => 'Votre inscription a été soumise avec succès. Elle doit être approuvée par un administrateur.',
-            'data' => $user
-        ], 201);
-    }
+    return response()->json([
+        'success' => true,
+        'message' => 'Votre inscription a été soumise avec succès. Elle doit être approuvée par un administrateur.',
+        'data' => $user
+    ], 201);
+}
 
     // pending() removed
     // redirectBasedOnRole() removed

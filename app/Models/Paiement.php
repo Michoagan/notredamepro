@@ -20,12 +20,14 @@ class Paiement extends Model
         'eleve_id',
         'contribution_id',
         'montant',
-        'methode',
+        'methode', // 'kkiapay', 'fedapay', 'especes'
         'statut',
         'reference_externe',
         'erreur',
-        'date_paiement',
         'details_paiement',
+        'date_paiement',
+        'auteur_id',
+        'observation'
     ];
 
     /**

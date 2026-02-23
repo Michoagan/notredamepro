@@ -18,6 +18,7 @@ class Professeur extends Model
         'birth_date',
         'email',
         'phone',
+        'matiere_id',
         'matiere',
         'photo',
         'personal_code',
@@ -75,13 +76,11 @@ class Professeur extends Model
     }
 
     /**
-     * Get the matieres taught by this professor.
+     * Get the matiere taught by this professor.
      */
-    public function matieresEnseignees(): BelongsToMany
+    public function matiere()
     {
-        return $this->belongsToMany(Matiere::class, 'classe_matiere')
-            ->withPivot('coefficient', 'classe_id')
-            ->withTimestamps();
+        return $this->belongsTo(Matiere::class);
     }
 
     /**

@@ -91,6 +91,14 @@ class Direction extends Authenticatable implements CanResetPassword
         return $this->role === 'secretariat';
     }
 
+    /**
+     * Check if user is a comptable
+     */
+    public function isComptable(): bool
+    {
+        return $this->role === 'comptable';
+    }
+
     public function getEmailForPasswordReset()
     {
         return $this->email;
