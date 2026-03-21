@@ -41,7 +41,7 @@ class DirectionController extends Controller
         'first_name' => ['required', 'string', 'max:255'],
         'gender' => ['required', 'in:M,F'],
         'birth_date' => ['required', 'date'],
-        'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable'],
+        'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable,caisse'],
         'email' => ['required', 'string', 'email', 'max:255', 'unique:direction_users,email'], // ✅ table corrigée
         'phone' => ['required', 'string', 'max:20'],
         'password' => ['required', 'confirmed', Rules\Password::defaults()],

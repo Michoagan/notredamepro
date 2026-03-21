@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
+import '../models/emploi_du_temps.dart';
 
 class ApiService extends ChangeNotifier {
   // Ajustez l'URL selon votre vrai backend
@@ -229,6 +230,72 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  Future<List<EmploiDuTemps>?> getEmploiDuTemps(int eleveId) async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/parent/emploi-du-temps/$eleveId'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return List<EmploiDuTemps>.from(
+            data['emplois_du_temps'].map((x) => EmploiDuTemps.fromJson(x)),
+          );
+        }
+        return null;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur getEmploiDuTemps: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getConvocations(int eleveId) async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/parent/convocations/$eleveId'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur getConvocations: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getAlertesScolarite() async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/parent/alertes-scolarite'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur getAlertesScolarite: $e');
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> forgotPassword(String email) async {
     try {
       final response = await http.post(
@@ -295,6 +362,71 @@ class ApiService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Erreur changePassword: $e');
       return {'success': false, 'message': 'Erreur de connexion.'};
+    }
+  }
+
+  Future<Map<String, dynamic>?> processPayment(
+    double amount,
+    String paymentMethod,
+    int eleveId,
+    double montantTotal,
+  ) async {
+    if (_token == null) return null;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/parent/process-payment'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+        body: {
+          'amount': amount.toString(),
+          'payment_method': paymentMethod,
+          'eleve_id': eleveId.toString(),
+          'montant_total': montantTotal.toString(),
+        },
+      );
+      return json.decode(response.body);
+    } catch (e) {
+      debugPrint('Erreur processPayment: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getNotifications() async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/parent/notifications'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur getNotifications: $e');
+      return null;
+    }
+  }
+
+  Future<bool> markNotificationAsRead(String id) async {
+    if (_token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/parent/notifications/$id/read'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Erreur markNotificationAsRead: $e');
+      return false;
     }
   }
 

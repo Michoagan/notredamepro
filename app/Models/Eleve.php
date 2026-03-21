@@ -67,6 +67,11 @@ class Eleve extends Authenticatable
         return $this->hasMany(Note::class);
     }
 
+    public function conduites()
+    {
+        return $this->hasMany(Conduite::class);
+    }
+
     public function paiements(): HasMany
     {
         return $this->hasMany(Paiement::class);

@@ -147,7 +147,7 @@ class PresenceController extends Controller
             
             if ($estAbsent) {
                 // Enregistrer seulement les absents
-                Presence::updateOrCreate(
+                $presence = Presence::updateOrCreate(
                     [
                         'eleve_id' => $eleve->id,
                         'classe_id' => $request->classe_id,
@@ -159,6 +159,16 @@ class PresenceController extends Controller
                         'professeur_id' => $professeur->id
                     ]
                 );
+
+                if ($presence->wasRecentlyCreated) {
+                    $tuteurs = \App\Models\Tuteur::whereHas('eleves', function($q) use ($eleve) {
+                        $q->where('eleves.id', $eleve->id);
+                    })->get();
+                    
+                    foreach ($tuteurs as $tuteur) {
+                        $tuteur->notify(new \App\Notifications\AbsenceAddedNotification($presence));
+                    }
+                }
             } else {
                 // Supprimer l'enregistrement si l'élève n'est plus absent
                 Presence::where('eleve_id', $eleve->id)
@@ -250,7 +260,7 @@ public function marquerPresences(Request $request)
         $professeur = Auth::user();
 
         foreach ($request->presences as $presenceData) {
-            Presence::updateOrCreate(
+            $presence = Presence::updateOrCreate(
                 [
                     'eleve_id' => $presenceData['eleve_id'],
                     'classe_id' => $request->classe_id,
@@ -262,6 +272,16 @@ public function marquerPresences(Request $request)
                     'remarque' => $presenceData['remarque'] ?? null
                 ]
             );
+
+            if ($presence->wasRecentlyCreated && !$presence->present) {
+                $tuteurs = \App\Models\Tuteur::whereHas('eleves', function($q) use ($presenceData) {
+                    $q->where('eleves.id', $presenceData['eleve_id']);
+                })->get();
+                
+                foreach ($tuteurs as $tuteur) {
+                    $tuteur->notify(new \App\Notifications\AbsenceAddedNotification($presence));
+                }
+            }
         }
 
         DB::commit();

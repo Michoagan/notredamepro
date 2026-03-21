@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getClasses, getEleves, downloadBulletin } from '../../services/secretariat';
+import settingsService from '../../services/settings';
 import { FileText, Download, Printer, Search, School, User, Calendar } from 'lucide-react';
 import axios from 'axios';
 
@@ -13,7 +14,24 @@ const Bulletins = () => {
     const [downloading, setDownloading] = useState(false);
 
     useEffect(() => {
-        fetchClasses();
+        const loadInitialData = async () => {
+            try {
+                const [classesResponse, currentTerm] = await Promise.all([
+                    getClasses(),
+                    settingsService.getCurrentTerm()
+                ]);
+
+                const classData = classesResponse?.kelas || classesResponse?.classes || classesResponse?.data || classesResponse;
+                setClasses(Array.isArray(classData) ? classData : []);
+
+                if (currentTerm) {
+                    setTrimestre(String(currentTerm)); // Ensure trimestre is a string
+                }
+            } catch (error) {
+                console.error("Erreur chargement initial des données", error);
+            }
+        };
+        loadInitialData();
     }, []);
 
     useEffect(() => {
@@ -25,14 +43,13 @@ const Bulletins = () => {
         }
     }, [selectedClasse]);
 
+    // fetchClasses is no longer called directly from useEffect, but its logic is integrated into loadInitialData
+    // Keeping it for potential future direct calls or if the structure of getClasses changes
     const fetchClasses = async () => {
         try {
             const data = await getClasses();
-            // Assuming getClasses returns available classes
-            // Adjust based on actual API response structure
-            if (Array.isArray(data)) setClasses(data);
-            else if (data.classes) setClasses(data.classes);
-            else if (data.data) setClasses(data.data);
+            const classData = data?.classes || data?.data || data;
+            setClasses(Array.isArray(classData) ? classData : []);
         } catch (error) {
             console.error("Erreur chargement classes", error);
         }

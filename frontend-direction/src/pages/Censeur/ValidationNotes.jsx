@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getClasses, getMatieres } from '../../services/secretariat';
 import censeurService from '../../services/censeur';
+import settingsService from '../../services/settings';
 import { CheckCircle, XCircle, Search, Filter } from 'lucide-react';
 
 const ValidationNotes = () => {
@@ -20,9 +21,17 @@ const ValidationNotes = () => {
     useEffect(() => {
         const loadRefs = async () => {
             try {
-                const [classesRes, matieresRes] = await Promise.all([getClasses(), getMatieres()]);
+                const [classesRes, matieresRes, currentTrim] = await Promise.all([
+                    getClasses(),
+                    getMatieres(),
+                    settingsService.getCurrentTerm()
+                ]);
+
                 if (classesRes.success) setClasses(classesRes.classes);
                 if (matieresRes.success) setMatieres(matieresRes.matieres);
+                if (currentTrim) {
+                    setFilters(prev => ({ ...prev, trimestre: currentTrim.toString() }));
+                }
             } catch (err) {
                 console.error("Erreur chargement références", err);
             }
@@ -35,9 +44,9 @@ const ValidationNotes = () => {
 
         setLoading(true);
         try {
-            const data = await censeurService.getNotesValidation(filters.classe_id, filters.matiere_id, filters.trimestre);
-            if (data.success) {
-                setNotes(data.notes);
+            const response = await censeurService.getNotesValidation(filters);
+            if (response.data && response.data.success) {
+                setNotes(response.data.notes || []);
             }
         } catch (err) {
             console.error("Erreur chargement notes", err);

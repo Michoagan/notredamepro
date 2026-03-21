@@ -1,102 +1,210 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-    <title>Reçu de Paiement</title>
+    <meta charset="UTF-8">
+    <title>Reçu de Paiement - {{ $paiement->reference }}</title>
     <style>
-        body { font-family: sans-serif; font-size: 14px; color: #333; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { width: 100%; border-bottom: 2px solid #2c3e50; padding-bottom: 20px; margin-bottom: 30px; }
-        .school-info { text-align: center; }
-        .school-name { font-size: 20px; font-weight: bold; text-transform: uppercase; color: #2c3e50; }
-        .receipt-title { text-align: center; font-size: 24px; font-weight: bold; margin: 30px 0; text-transform: uppercase; letter-spacing: 2px; }
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            font-size: 14px;
+        }
+        .header {
+            width: 100%;
+            border-bottom: 2px solid #1a237e;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header table {
+            width: 100%;
+        }
+        .school-info {
+            text-align: left;
+        }
+        .school-name {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a237e;
+            margin: 0 0 5px 0;
+        }
+        .receipt-title {
+            text-align: right;
+            color: #555;
+        }
+        .receipt-title h1 {
+            margin: 0 0 5px 0;
+            font-size: 28px;
+            color: #d32f2f;
+            text-transform: uppercase;
+        }
         
-        .info-section { width: 100%; margin-bottom: 40px; }
-        .info-section td { padding: 8px; }
-        .label { font-weight: bold; width: 150px; color: #555; }
-        .value { color: #000; font-weight: bold; }
+        .details-section {
+            width: 100%;
+            margin-bottom: 30px;
+        }
+        .details-section td {
+            vertical-align: top;
+            width: 50%;
+        }
+        .box {
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        .box h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #1a237e;
+            font-size: 16px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        .info-row {
+            margin-bottom: 5px;
+        }
+        .info-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 120px;
+        }
         
-        .amount-box { margin-top: 20px; text-align: center; background-color: #f8f9fa; border: 2px dashed #2c3e50; padding: 20px; font-size: 28px; font-weight: bold; color: #success; }
+        .transaction-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 40px;
+        }
+        .transaction-table th {
+            background-color: #1a237e;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        .transaction-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .amount-col {
+            text-align: right;
+        }
         
-        .footer { margin-top: 60px; text-align: center; font-size: 12px; color: #7f8c8d; border-top: 1px solid #bdc3c7; padding-top: 20px; }
+        .total-section {
+            width: 100%;
+            text-align: right;
+            font-size: 18px;
+        }
+        .total-amount {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a237e;
+        }
         
-        .qr-code { position: absolute; top: 20px; right: 20px; width: 100px; }
-        .status-badge { display: inline-block; padding: 5px 15px; background-color: #27ae60; color: white; rounded: 20px; font-weight: bold; text-transform: uppercase; font-size: 16px; margin-top:10px; }
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .signature-area {
+            margin-top: 50px;
+            width: 100%;
+        }
+        .signature-box {
+            float: right;
+            width: 200px;
+            text-align: center;
+        }
+        .signature-line {
+            border-bottom: 1px solid #333;
+            margin-bottom: 5px;
+            height: 50px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="school-info">
-                <div class="school-name">COMPLEXE SCOLAIRE NOTRE DAME DE GRÂCE</div>
-                <div>BP: 1234 Lomé - TOGO | Tél: 90 00 00 00</div>
-            </div>
-            @if(isset($qrCodeImage))
-                <img src="data:image/png;base64, {{ $qrCodeImage }}" class="qr-code" alt="QR Code"/>
-            @endif
-        </div>
 
-        <div class="receipt-title">REÇU DE SCOLARITÉ</div>
-
-        <table class="info-section">
+    <div class="header">
+        <table>
             <tr>
-                <td class="label">Reçu N° :</td>
-                <td class="value">REC-{{ str_pad($paiement->id, 6, '0', STR_PAD_LEFT) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Date :</td>
-                <td class="value">{{ \Carbon\Carbon::parse($paiement->date_paiement ?? $paiement->created_at)->format('d/m/Y à H:i') }}</td>
-            </tr>
-            <tr>
-                <td class="label">Référence :</td>
-                <td class="value">{{ $paiement->reference_externe ?? $paiement->reference }} ({{ strtoupper($paiement->methode) }})</td>
-            </tr>
-            <tr><td colspan="2"><hr style="border-top:1px solid #eee; margin:15px 0;"></td></tr>
-            <tr>
-                <td class="label">Élève :</td>
-                <td class="value" style="font-size: 16px;">{{ $paiement->eleve->nom }} {{ $paiement->eleve->prenom }}</td>
-            </tr>
-            <tr>
-                <td class="label">Classe :</td>
-                <td class="value">{{ $paiement->eleve->classe->nom }}</td>
-            </tr>
-            @if($paiement->eleve->matricule)
-            <tr>
-                <td class="label">Matricule :</td>
-                <td class="value">{{ $paiement->eleve->matricule }}</td>
-            </tr>
-            @endif
-            <tr><td colspan="2"><hr style="border-top:1px solid #eee; margin:15px 0;"></td></tr>
-            <tr>
-                <td class="label">Payé par :</td>
-                <td class="value">
-                    @if($paiement->eleve->tuteurs && $paiement->eleve->tuteurs->isNotEmpty())
-                        {{ $paiement->eleve->tuteurs->first()->nom }} {{ $paiement->eleve->tuteurs->first()->prenom }}
-                    @else
-                        Parent / Tuteur
-                    @endif
+                <td class="school-info">
+                    <h2 class="school-name">C.S. NOTRE DAME DE TOUTES GRÂCES</h2>
+                    <p>
+                        Quartier Ayelawadje, Cotonou<br>
+                        Tél: +229 97 00 00 00<br>
+                        Email: contact@ndtg.bj
+                    </p>
+                </td>
+                <td class="receipt-title">
+                    <h1>REÇU</h1>
+                    <p>
+                        <strong>Réf:</strong> {{ $paiement->reference }}<br>
+                        <strong>Date:</strong> {{ \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y') }}<br>
+                        <strong>Heure:</strong> {{ \Carbon\Carbon::parse($paiement->date_paiement)->format('H:i') }}
+                    </p>
                 </td>
             </tr>
-            <tr>
-                <td class="label">Motif :</td>
-                <td class="value">Frais de scolarité</td>
-            </tr>
         </table>
-
-        <div class="amount-box">
-            Montant Payé : {{ number_format($paiement->montant, 0, ',', ' ') }} FCFA
-            <br>
-            <span class="status-badge">PAYÉ</span>
-        </div>
-
-        <div style="margin-top: 50px; text-align: right; padding-right: 50px;">
-            <p><strong>La Comptabilité</strong></p>
-            <p style="font-style: italic; color: #7f8c8d; font-size: 12px;">Document généré électroniquement.</p>
-        </div>
-
-        <div class="footer">
-            Document généré le {{ $date_generation }} | Toute rature ou surcharge rend ce reçu nul.
-        </div>
     </div>
+
+    <table class="details-section">
+        <tr>
+            <td style="padding-right: 10px;">
+                <div class="box">
+                    <h3>Informations Élève</h3>
+                    <div class="info-row"><span class="info-label">Matricule:</span> {{ $paiement->eleve->matricule }}</div>
+                    <div class="info-row"><span class="info-label">Nom complet:</span> {{ $paiement->eleve->nom }} {{ $paiement->eleve->prenom }}</div>
+                    <div class="info-row"><span class="info-label">Classe:</span> {{ $paiement->eleve->classe->nom ?? 'N/A' }}</div>
+                    <div class="info-row"><span class="info-label">Parent/Tuteur:</span> {{ $paiement->eleve->nom_parent ?? 'N/A' }}</div>
+                </div>
+            </td>
+            <td style="padding-left: 10px;">
+                <div class="box">
+                    <h3>Détails du Paiement</h3>
+                    <div class="info-row"><span class="info-label">Mode:</span> {{ ucfirst($paiement->methode) }}</div>
+                    <div class="info-row"><span class="info-label">Statut:</span> <span style="color: green; font-weight: bold;">PAYÉ</span></div>
+                    <div class="info-row"><span class="info-label">Caissier(ère):</span> Direction/Comptabilité</div>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <table class="transaction-table">
+        <thead>
+            <tr>
+                <th>Désignation</th>
+                <th>Année Scolaire</th>
+                <th class="amount-col">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ $paiement->contribution->description ?? 'Scolarité (Frais de scolarité)' }}</td>
+                <td>{{ $paiement->contribution->annee_scolaire ?? 'Scolaire en cours' }}</td>
+                <td class="amount-col">{{ number_format($paiement->montant, 0, ',', ' ') }} FCFA</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="total-section">
+        <p>Montant Total Versé: <span class="total-amount">{{ number_format($paiement->montant, 0, ',', ' ') }} FCFA</span></p>
+    </div>
+
+    <div class="signature-area">
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <strong>La Caisse / Direction</strong>
+        </div>
+        <div style="clear: both;"></div>
+    </div>
+
+    <div class="footer">
+        <p>Ce reçu est généré électroniquement par le système de gestion financière.<br>
+        Merci de le conserver précieusement. Il vous servira de preuve de paiement.</p>
+    </div>
+
 </body>
 </html>

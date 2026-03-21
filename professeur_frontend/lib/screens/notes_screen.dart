@@ -8,6 +8,7 @@ import '../models/professeur.dart';
 import '../widgets/note_input_dialog.dart';
 import '../widgets/moyenne_table.dart';
 import '../services/pdf_service.dart';
+import '../services/csv_service.dart';
 import '../utils/theme.dart';
 import '../widgets/premium_feedback.dart';
 
@@ -769,35 +770,64 @@ class _NotesScreenState extends State<NotesScreen> {
                                       ),
                                     ],
                                   ),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primary.withOpacity(0.1),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: IconButton(
-                                      onPressed: () async {
-                                        final apiService =
-                                            Provider.of<ApiService>(context,
-                                                listen: false);
-                                        final profile =
-                                            await apiService.getProfile();
-                                        final profName =
-                                            '${profile['professeur']['prenom']} ${profile['professeur']['nom']}';
+                                  Row(
+                                    children: [
+                                      Container(
+                                        margin: const EdgeInsets.only(right: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: IconButton(
+                                          onPressed: () async {
+                                            await CsvService
+                                                .generateAndDownloadCsv(
+                                              moyennes: _moyennes,
+                                              classeName:
+                                                  _selectedClasse!.displayName,
+                                              matiereName: 'Matière Principale',
+                                              trimestre: _selectedTrimestre,
+                                            );
+                                          },
+                                          icon: const Icon(
+                                              Icons.table_view_rounded),
+                                          tooltip: 'Télécharger Excel (CSV)',
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color:
+                                              AppTheme.primary.withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: IconButton(
+                                          onPressed: () async {
+                                            final apiService =
+                                                Provider.of<ApiService>(context,
+                                                    listen: false);
+                                            final profile =
+                                                await apiService.getProfile();
+                                            final profName =
+                                                '${profile['professeur']['prenom']} ${profile['professeur']['nom']}';
 
-                                        await PdfService
-                                            .generateAndDownloadBulletin(
-                                          moyennes: _moyennes,
-                                          classeName:
-                                              _selectedClasse!.displayName,
-                                          matiereName: 'Matière Principale',
-                                          trimestre: _selectedTrimestre,
-                                          profName: profName,
-                                        );
-                                      },
-                                      icon: const Icon(Icons.download_rounded),
-                                      tooltip: 'Télécharger PDF',
-                                      color: AppTheme.primary,
-                                    ),
+                                            await PdfService
+                                                .generateAndDownloadBulletin(
+                                              moyennes: _moyennes,
+                                              classeName:
+                                                  _selectedClasse!.displayName,
+                                              matiereName: 'Matière Principale',
+                                              trimestre: _selectedTrimestre,
+                                              profName: profName,
+                                            );
+                                          },
+                                          icon: const Icon(
+                                              Icons.picture_as_pdf_rounded),
+                                          tooltip: 'Télécharger PDF',
+                                          color: AppTheme.primary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

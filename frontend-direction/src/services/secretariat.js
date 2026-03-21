@@ -140,3 +140,20 @@ export const deleteMatiere = async (id) => {
     const response = await api.delete(`/classes/matieres/${id}`);
     return response.data;
 };
+
+// --- EVENEMENTS ---
+export const getEvenements = async () => {
+    const response = await api.get('/secretaire/evenements');
+    return response.data;
+};
+
+export const createEvenement = async (data) => {
+    const response = await api.post('/secretaire/evenements', data);
+    return response.data;
+};
+
+export const deleteEvenement = async (id) => {
+    const response = await api.delete(`/secretaire/evenements/${id}`);
+    return response.data;
+};
+

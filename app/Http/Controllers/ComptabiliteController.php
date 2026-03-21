@@ -11,6 +11,9 @@ use App\Models\MouvementStock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\PaymentReceiptMail;
 
 class ComptabiliteController extends Controller
 {
@@ -70,6 +73,124 @@ class ComptabiliteController extends Controller
         return response()->json($depenses);
     }
 
+    // Méthodes de paiements déplacées vers CaisseController.
+    public function indexPaiements()
+    {
+        $paiements = Paiement::with(['eleve.classe', 'contribution'])
+            ->latest('date_paiement')
+            ->get();
+            
+        return response()->json($paiements);
+    }
+
+    /**
+     * Enregistrer manuellement un Paiement (Scolarité).
+     */
+    public function storePaiement(Request $request)
+    {
+        $request->validate([
+            'montant' => 'required|numeric|min:1',
+            'methode' => 'required|string',
+            'eleve_id' => 'required|exists:eleves,id',
+        ]);
+
+        $eleve = \App\Models\Eleve::with('classe')->findOrFail($request->eleve_id);
+        if (!$eleve->classe) {
+            return response()->json(['success' => false, 'message' => 'L\'élève n\'a pas de classe.'], 400);
+        }
+
+        $contribution = $eleve->classe->contributionActive();
+        if (!$contribution) {
+            $contribution = \App\Models\Contribution::firstOrCreate([
+                'classe_id' => $eleve->classe_id,
+                'annee_scolaire' => \App\Models\Contribution::getAnneeScolaireCourante(),
+                'type' => \App\Models\Contribution::TYPE_SCOLARITE,
+            ], [
+                'montant_total' => $eleve->classe->cout_contribution ?? 50000,
+                'montant_paye' => 0,
+                'description' => 'Scolarité générée automatiquement',
+                'est_obligatoire' => true
+            ]);
+        }
+
+        $transaction = Paiement::create([
+            'reference' => 'PYR-'.date('Y').'-'.\Illuminate\Support\Str::random(6),
+            'eleve_id' => $request->eleve_id,
+            'contribution_id' => $contribution->id,
+            'montant' => $request->montant,
+            'methode' => $request->methode,
+            'statut' => 'success', // Manual payment is immediately successful
+            'date_paiement' => now(),
+        ]);
+
+        $transaction->load(['eleve.classe', 'contribution']);
+
+        // Generate the PDF in memory
+        $pdf = Pdf::loadView('pdf.receipt', ['paiement' => $transaction]);
+        $pdfContent = $pdf->output();
+
+        // Send email to parent if email exists
+        if (!empty($eleve->email)) {
+            try {
+                Mail::to($eleve->email)->send(new PaymentReceiptMail($transaction, $pdfContent));
+            } catch (\Exception $e) {
+                \Log::error('Erreur lors de l\'envoi du reçu par email: ' . $e->getMessage());
+                // Non-blocking: we still return success for the payment even if email fails
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Paiement enregistré avec succès.',
+            'paiement' => $transaction,
+            'receipt_url' => url('/api/direction/comptabilite/paiements/' . $transaction->id . '/receipt') // Optional direct URL
+        ]);
+    }
+
+    /**
+     * Download the PDF receipt for a specific payment.
+     */
+    public function downloadReceipt(Paiement $paiement)
+    {
+        $paiement->load(['eleve', 'eleve.classe', 'eleve.tuteurs', 'contribution']);
+        
+        // Generate QR code locally via endroid/qr-code
+        $qrData = [
+            'recu_id' => $paiement->id,
+            'reference' => $paiement->reference_externe ?? $paiement->reference,
+            'eleve' => $paiement->eleve->nom . ' ' . $paiement->eleve->prenom,
+            'montant' => $paiement->montant,
+            'date' => $paiement->date_paiement ? \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y H:i') : null,
+            'statut' => 'Payé'
+        ];
+
+        $qrText = json_encode($qrData);
+
+        $result = \Endroid\QrCode\Builder\Builder::create()
+            ->writer(new \Endroid\QrCode\Writer\PngWriter())
+            ->data($qrText)
+            ->encoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+            ->errorCorrectionLevel(\Endroid\QrCode\ErrorCorrectionLevel::Low)
+            ->size(100)
+            ->margin(10)
+            ->roundBlockSizeMode(\Endroid\QrCode\RoundBlockSizeMode::Margin)
+            ->foregroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+            ->backgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255))
+            ->build();
+
+        $qrCodeImage = base64_encode($result->getString());
+
+        $pdf = Pdf::loadView('pdf.receipt', [
+            'paiement' => $paiement,
+            'qrCodeImage' => $qrCodeImage,
+            'date_generation' => now()->format('d/m/Y H:i:s')
+        ]);
+        
+        $filename = "recu_paiement_{$paiement->id}_{$paiement->eleve->nom}.pdf";
+
+        return $pdf->download($filename);
+    }
+
     /**
      * Enregistrer une Dépense (Sortie).
      */
@@ -99,9 +220,7 @@ class ComptabiliteController extends Controller
         ]);
     }
 
-    /**
-     * Enregistrer une Vente (Autre recette : Tenue, Cantine, Vente directe).
-     */
+    // Méthode de vente déplacée vers CaisseController.
     public function storeVente(Request $request)
     {
         $request->validate([
@@ -185,5 +304,105 @@ class ComptabiliteController extends Controller
             ]);
 
         }); // End Transaction
+    }
+
+    /**
+     * Liste des salaires d'un mois et d'une annee
+     */
+    public function salaires(Request $request)
+    {
+        $mois = $request->query('mois', now()->month);
+        $annee = $request->query('annee', now()->year);
+
+        $salaires = \App\Models\Salaire::with('professeur')
+            ->where('mois', $mois)
+            ->where('annee', $annee)
+            ->get();
+
+        return response()->json($salaires);
+    }
+
+    /**
+     * Generer les salaires pour un mois/annee specifique.
+     * Calcule le total d'heures base sur l'emploi du temps ou presence.
+     */
+    public function generateSalaires(Request $request)
+    {
+        $request->validate([
+            'mois' => 'required|integer|min:1|max:12',
+            'annee' => 'required|integer|min:2020',
+        ]);
+
+        $mois = $request->mois;
+        $annee = $request->annee;
+
+        $professeurs = \App\Models\Professeur::all();
+        $generated = 0;
+
+        foreach ($professeurs as $prof) {
+            // Check if already created
+            $exists = \App\Models\Salaire::where('professeur_id', $prof->id)
+                ->where('mois', $mois)
+                ->where('annee', $annee)
+                ->exists();
+
+            if ($exists) continue;
+
+            // Simplified logic: Assume 100 hours of work normally if full time, or sum of presences
+            // Here we use a generic placeholder value per teacher or their `taux_horaire`
+            $heures = 120; // Example static 120 hours
+            $taux = $prof->taux_horaire ?? 5000; // default 5000 F CFA/h if null
+            $base = $heures * $taux;
+
+            \App\Models\Salaire::create([
+                'professeur_id' => $prof->id,
+                'mois' => $mois,
+                'annee' => $annee,
+                'heures_travaillees' => $heures,
+                'taux_horaire' => $taux,
+                'montant_base' => $base,
+                'primes' => 0,
+                'retenues' => 0,
+                'net_a_payer' => $base,
+                'statut' => 'en_attente'
+            ]);
+            $generated++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "$generated fiche(s) de salaire générée(s) pour $mois/$annee."
+        ]);
+    }
+
+    /**
+     * Marquer un salaire comme paye
+     */
+    public function payerSalaire($id)
+    {
+        $salaire = \App\Models\Salaire::findOrFail($id);
+        
+        if ($salaire->statut === 'paye') {
+            return response()->json(['success' => false, 'message' => 'Déjà payé.'], 400);
+        }
+
+        // Creer automatiquement la depense correspondante
+        Depense::create([
+            'motif' => 'Paiement Salaire - ' . $salaire->professeur->first_name . ' ' . $salaire->professeur->last_name . ' (' . $salaire->mois . '/' . $salaire->annee . ')',
+            'montant' => $salaire->net_a_payer,
+            'categorie' => 'salaire',
+            'date_depense' => now(),
+            'auteur_id' => auth()->id(),
+        ]);
+
+        $salaire->update([
+            'statut' => 'paye',
+            'date_paiement' => now()
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Salaire payé avec succès et Dépense enregistrée.'
+        ]);
     }
 }

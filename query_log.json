@@ -1,0 +1,24 @@
+{
+    "total_queries": 2,
+    "queries": {
+        "query": "select * from \"professeurs\" where \"professeurs\".\"deleted_at\" is null order by \"last_name\" asc, \"first_name\" asc",
+        "bindings": [],
+        "time": 4199.66,
+        "readWriteType": "write"
+    },
+    "all_queries": [
+        {
+            "query": "select * from \"professeurs\" where \"professeurs\".\"deleted_at\" is null order by \"last_name\" asc, \"first_name\" asc",
+            "bindings": [],
+            "time": 4199.66,
+            "readWriteType": "write"
+        },
+        {
+            "query": "select * from \"matieres\" where \"matieres\".\"id\" in (1, 6, 7, 9) and \"matieres\".\"deleted_at\" is null",
+            "bindings": [],
+            "time": 891.43,
+            "readWriteType": "write"
+        }
+    ],
+    "execution_time": 5.196561098098755
+}

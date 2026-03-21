@@ -20,6 +20,7 @@ class CenseurController extends Controller
             'classes_count' => Classe::count(),
             'professeurs_count' => Professeur::count(),
             'notes_pending_validation' => \App\Models\Note::where('is_validated', false)->count(),
+            'eleves_count' => \App\Models\Eleve::count(),
             'recent_logs' => ModificationLog::orderBy('created_at', 'desc')->take(5)->get()
         ];
 
@@ -182,7 +183,8 @@ class CenseurController extends Controller
 
     public function contacts()
     {
-        $professeurs = Professeur::select('id', 'nom', 'prenom', 'email', 'telephone', 'specialite')
+        $professeurs = Professeur::with('matiere')
+            ->select('id', 'last_name', 'first_name', 'email', 'phone', 'matiere_id')
             ->where('is_active', true)
             ->get();
             

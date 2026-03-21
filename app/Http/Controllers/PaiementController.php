@@ -14,6 +14,8 @@ use Endroid\QrCode\Color\Color;
 use Endroid\QrCode\Encoding\Encoding;
 use Endroid\QrCode\ErrorCorrectionLevel;
 use Endroid\QrCode\RoundBlockSizeMode;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\PaymentReceiptMail;
 
 class PaiementController extends Controller
 {
@@ -45,6 +47,9 @@ class PaiementController extends Controller
             }
         }
 
+        $paiementEnLigneActif = \App\Models\Setting::where('key', 'paiement_en_ligne_actif')->value('value') ?? 'true';
+        $paiementEnLigneActif = filter_var($paiementEnLigneActif, FILTER_VALIDATE_BOOLEAN);
+
         return response()->json([
             'success' => true,
             'parent' => $parent,
@@ -53,11 +58,19 @@ class PaiementController extends Controller
             'classe' => $classe,
             'contribution' => $contribution,
             'paiements' => $paiements,
+            'paiement_en_ligne_actif' => $paiementEnLigneActif,
         ]);
     }
 
     public function processPayment(Request $request)
     {
+        $paiementEnLigneActif = \App\Models\Setting::where('key', 'paiement_en_ligne_actif')->value('value') ?? 'true';
+        $paiementEnLigneActif = filter_var($paiementEnLigneActif, FILTER_VALIDATE_BOOLEAN);
+
+        if (!$paiementEnLigneActif) {
+            return response()->json(['success' => false, 'message' => 'Les paiements en ligne sont temporairement désactivés par la direction.'], 403);
+        }
+
         $request->validate([
             'amount' => 'required|numeric|min:1000',
             'payment_method' => 'required|in:kkiapay,fedapay',
@@ -75,10 +88,26 @@ class PaiementController extends Controller
             return response()->json(['success' => false, 'message' => 'Le montant saisi dépasse le solde restant.'], 400);
         }
 
+        // Trouver ou créer la contribution active pour la classe
+        $contribution = $eleve->classe->contributionActive();
+        if (!$contribution) {
+            $contribution = \App\Models\Contribution::firstOrCreate([
+                'classe_id' => $eleve->classe_id,
+                'annee_scolaire' => \App\Models\Contribution::getAnneeScolaireCourante(),
+                'type' => \App\Models\Contribution::TYPE_SCOLARITE,
+            ], [
+                'montant_total' => $eleve->classe->cout_contribution ?? 50000,
+                'montant_paye' => 0,
+                'description' => 'Scolarité générée automatiquement',
+                'est_obligatoire' => true
+            ]);
+        }
+
         // Créer une transaction en attente
         $transaction = Paiement::create([
             'reference' => 'PYR-'.date('Y').'-'.Str::random(6),
             'eleve_id' => $request->eleve_id,
+            'contribution_id' => $contribution->id,
             'montant' => $request->amount,
             'methode' => $request->payment_method,
             'statut' => 'pending',
@@ -102,18 +131,27 @@ class PaiementController extends Controller
         // Stocker l'ID de transaction en session pour la vérification après paiement
         session(['kkiapay_transaction_id' => $transaction->id]);
 
-        // Retourner les infos pour que le frontend lance le paiement
+        // Retourner l'URL de paiement pour que le frontend lance la page
         return response()->json([
             'success' => true,
-            'payment_url' => null, // KkiaPay est souvent intégré via JS, on renvoie les clés
-            'kkiapay_config' => [
-                'public_key' => $apiKey,
-                'amount' => $transaction->montant,
-                'transactionId' => $transaction->id,
-                'callbackUrl' => $callbackUrl,
-                'theme' => 'green', // Exemple
-            ],
+            'payment_url' => route('kkiapay.checkout', ['transaction_id' => $transaction->id]),
             'message' => 'Initialisation KkiaPay réussie',
+        ]);
+    }
+
+    public function kkiapayCheckout(Request $request)
+    {
+        $transactionId = $request->query('transaction_id');
+        $transaction = Paiement::findOrFail($transactionId);
+
+        $apiKey = env('KKIAPAY_PUBLIC_KEY', 'c67683ac89ca27a988244dac8415d4e6d8a82511');
+        $callbackUrl = route('parent.payment-callback', ['method' => 'kkiapay', 'local_id' => $transaction->id]);
+
+        return view('kkiapay_checkout', [
+            'montant' => $transaction->montant,
+            'callbackUrl' => $callbackUrl,
+            'transactionId' => $transaction->id,
+            'apiKey' => $apiKey,
         ]);
     }
 
@@ -121,20 +159,22 @@ class PaiementController extends Controller
     {
         try {
             // Configuration de Fedapay
-            \Fedapay\Fedapay::setApiKey(env('FEDAPAY_SECRET_KEY'));
-            \Fedapay\Fedapay::setEnvironment(env('FEDAPAY_ENVIRONMENT', 'sandbox'));
+            \FedaPay\FedaPay::setApiKey(env('FEDAPAY_SECRET_KEY'));
+            \FedaPay\FedaPay::setEnvironment(env('FEDAPAY_ENVIRONMENT', 'sandbox'));
 
+            $parent = $transaction->eleve->tuteurs->first();
+            
             // Créer une transaction Fedapay
-            $fedapayTransaction = \Fedapay\Transaction::create([
+            $fedapayTransaction = \FedaPay\Transaction::create([
                 'description' => 'Paiement contribution scolaire - '.$transaction->eleve->prenom.' '.$transaction->eleve->nom,
                 'amount' => $transaction->montant,
                 'currency' => ['iso' => 'XOF'],
                 'callback_url' => route('parent.payment-callback', ['method' => 'fedapay']),
                 'customer' => [
-                    'firstname' => $transaction->eleve->parent->prenom,
-                    'lastname' => $transaction->eleve->parent->nom,
-                    'email' => $transaction->eleve->parent->email,
-                    'phone_number' => $transaction->eleve->parent->telephone,
+                    'firstname' => $parent ? $parent->prenom : $transaction->eleve->prenom,
+                    'lastname' => $parent ? $parent->nom : $transaction->eleve->nom,
+                    'email' => $parent ? $parent->email : 'contact@ecole.com',
+                    'phone_number' => $parent ? $parent->telephone : $transaction->eleve->telephone_parent,
                 ],
             ]);
 
@@ -172,11 +212,8 @@ class PaiementController extends Controller
 
     private function handleKkiaPayCallback(Request $request)
     {
-        $transactionId = $request->input('transactionId');
-        $status = $request->input('status');
-
-        // Récupérer l'ID de transaction depuis la session ou les paramètres
-        $localTransactionId = session('kkiapay_transaction_id', $transactionId);
+        $transactionId = $request->input('transaction_id');
+        $localTransactionId = $request->input('local_id');
 
         $transaction = Paiement::find($localTransactionId);
 
@@ -184,13 +221,29 @@ class PaiementController extends Controller
             return response()->json(['success' => false, 'message' => 'Transaction non trouvée.'], 404);
         }
 
-        if ($status === 'success') {
+        if (!$transactionId) {
+             return response()->json(['success' => false, 'message' => 'Transaction ID Kkiapay manquant.'], 400);
+        }
+
+        // Vérification via l'API Kkiapay
+        $response = \Illuminate\Support\Facades\Http::withHeaders([
+            'x-api-key' => env('KKIAPAY_PUBLIC_KEY'),
+            'x-secret-key' => env('KKIAPAY_SECRET_KEY'),
+            'x-private-key' => env('KKIAPAY_PRIVATE_KEY'),
+            'Accept' => 'application/json'
+        ])->post('https://api.kkiapay.me/api/v1/transactions/status', [
+            'transactionId' => $transactionId
+        ]);
+
+        if ($response->successful() && $response->json('status') === 'SUCCESS') {
             // Mettre à jour le statut de la transaction
             $transaction->update([
                 'statut' => 'success',
                 'reference_externe' => $transactionId,
                 'date_paiement' => now(),
             ]);
+            
+            $this->sendReceiptEmail($transaction);
 
             return response()->json([
                 'success' => true,
@@ -199,8 +252,7 @@ class PaiementController extends Controller
             ]);
         } else {
             $transaction->update(['statut' => 'failed']);
-
-            return response()->json(['success' => false, 'message' => 'Le paiement a échoué.'], 400);
+            return response()->json(['success' => false, 'message' => 'Le paiement a échoué ou n\'est pas finalisé.'], 400);
         }
     }
 
@@ -214,8 +266,8 @@ class PaiementController extends Controller
 
         try {
             // Récupérer la transaction Fedapay
-            \Fedapay\Fedapay::setApiKey(env('FEDAPAY_SECRET_KEY'));
-            $fedapayTransaction = \Fedapay\Transaction::retrieve($transactionId);
+            \FedaPay\FedaPay::setApiKey(env('FEDAPAY_SECRET_KEY'));
+            $fedapayTransaction = \FedaPay\Transaction::retrieve($transactionId);
 
             // Trouver la transaction dans notre base
             $transaction = Paiement::where('reference_externe', $transactionId)->first();
@@ -229,6 +281,8 @@ class PaiementController extends Controller
                     'statut' => 'success',
                     'date_paiement' => now(),
                 ]);
+                
+                $this->sendReceiptEmail($transaction);
 
                 return response()->json([
                     'success' => true,
@@ -243,6 +297,60 @@ class PaiementController extends Controller
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Erreur lors du traitement du paiement: '.$e->getMessage()], 500);
+        }
+    }
+
+    private function sendReceiptEmail($paiement) 
+    {
+        $paiement->load(['eleve', 'eleve.classe', 'eleve.tuteurs']);
+        
+        // Generate QR code locally via endroid/qr-code
+        $qrData = [
+            'recu_id' => $paiement->id,
+            'reference' => $paiement->reference_externe ?? $paiement->reference,
+            'eleve' => $paiement->eleve->nom . ' ' . $paiement->eleve->prenom,
+            'montant' => $paiement->montant,
+            'date' => $paiement->date_paiement ? \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y H:i') : null,
+            'statut' => 'Payé'
+        ];
+
+        $qrText = json_encode($qrData);
+
+        // QR Code config
+        $qrCode = QrCode::create($qrText)
+            ->setEncoding(new Encoding('UTF-8'))
+            ->setErrorCorrectionLevel(ErrorCorrectionLevel::Low)
+            ->setSize(100)
+            ->setMargin(10)
+            ->setRoundBlockSizeMode(RoundBlockSizeMode::Margin)
+            ->setForegroundColor(new Color(0, 0, 0))
+            ->setBackgroundColor(new Color(255, 255, 255));
+
+        $writer = new PngWriter();
+        $qrCodeResult = $writer->write($qrCode);
+        $qrCodeImage = base64_encode($qrCodeResult->getString());
+
+        $pdf = Pdf::loadView('pdf.receipt', [
+            'paiement' => $paiement,
+            'qrCodeImage' => $qrCodeImage,
+            'date_generation' => now()->format('d/m/Y H:i:s')
+        ]);
+        
+        $pdfContent = $pdf->output();
+
+        // Send email to parent if email exists
+        $parent = $paiement->eleve->tuteurs->first();
+        $email = $parent ? $parent->email : null;
+        if (!$email) {
+            $email = optional($paiement->eleve)->email;
+        }
+        
+        if (!empty($email)) {
+            try {
+                Mail::to($email)->send(new PaymentReceiptMail($paiement, $pdfContent));
+            } catch (\Exception $e) {
+                Log::error('Erreur lors de l\'envoi du reçu par email: ' . $e->getMessage());
+            }
         }
     }
 
@@ -298,14 +406,16 @@ class PaiementController extends Controller
 
         if ($paiement->methode === 'fedapay' && $paiement->reference_externe) {
             try {
-                \Fedapay\Fedapay::setApiKey(env('FEDAPAY_SECRET_KEY'));
-                $fedapayTransaction = \Fedapay\Transaction::retrieve($paiement->reference_externe);
+                \FedaPay\FedaPay::setApiKey(env('FEDAPAY_SECRET_KEY'));
+                $fedapayTransaction = \FedaPay\Transaction::retrieve($paiement->reference_externe);
 
                 if ($fedapayTransaction->status === 'approved' && $paiement->statut !== 'success') {
                     $paiement->update([
                         'statut' => 'success',
                         'date_paiement' => now(),
                     ]);
+                    
+                    $this->sendReceiptEmail($paiement);
 
                     return response()->json(['success' => true, 'message' => 'Paiement vérifié et confirmé avec succès!']);
                 }

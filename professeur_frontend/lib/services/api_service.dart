@@ -13,6 +13,7 @@ import '../models/cahier_texte.dart';
 import '../models/note_analysis.dart';
 import '../models/communique.dart';
 import '../models/evenement.dart';
+import '../models/emploi_du_temps.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -322,6 +323,32 @@ class ApiService {
     }
   }
 
+  Future<List<EmploiDuTemps>> getEmploiDuTemps() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/professeurs/espace/emploi-du-temps'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return List<EmploiDuTemps>.from(
+              data['emplois_du_temps'].map((x) => EmploiDuTemps.fromJson(x)));
+        } else {
+          throw Exception(
+              data['message'] ?? 'Erreur de chargement de l\'emploi du temps');
+        }
+      } else {
+        throw Exception(
+            'Erreur serveur (${response.statusCode}) lors du chargement de l\'emploi du temps');
+      }
+    } catch (e) {
+      throw Exception('Erreur de connexion: $e');
+    }
+  }
+
   Future<List<Matiere>> getMatieresByClasse(int classeId) async {
     try {
       final headers = await _getHeaders();
@@ -427,6 +454,88 @@ class ApiService {
         return {
           'success': false,
           'message': errorData['message'] ?? 'Erreur lors de l\'enregistrement',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erreur de connexion: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> getConduites({
+    required int classeId,
+    required int trimestre,
+  }) async {
+    try {
+      final headers = await _getHeaders();
+      final url =
+          _buildUrl('/professeurs/classes/$classeId/conduites', params: {
+        'trimestre': trimestre.toString(),
+      });
+
+      final response = await http.get(Uri.parse(url), headers: headers);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return {
+            'success': true,
+            'eleves':
+                data['data'], // This contains eleves mapped with conduites
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Erreur de chargement des conduites',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message':
+              'Erreur de chargement des conduites (${response.statusCode})',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erreur de connexion: $e',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> storeConduites({
+    required int classeId,
+    required int trimestre,
+    required List<Map<String, dynamic>> conduites,
+  }) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse(
+            '${ApiConstants.baseUrl}/professeurs/classes/$classeId/conduites'),
+        headers: headers,
+        body: json.encode({
+          'trimestre': trimestre,
+          'conduites': conduites,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'success': data['success'] ?? true,
+          'message':
+              data['message'] ?? 'Notes de conduite enregistrées avec succès',
+        };
+      } else {
+        final errorData = json.decode(response.body);
+        return {
+          'success': false,
+          'message': errorData['message'] ??
+              'Erreur lors de l\'enregistrement des conduites',
         };
       }
     } catch (e) {

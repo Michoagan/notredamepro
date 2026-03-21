@@ -5,6 +5,7 @@ import '../models/eleve.dart';
 import '../services/api_service.dart';
 import '../widgets/enfant_selector.dart';
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class FinancesScreen extends StatefulWidget {
   final List<Eleve> enfants;
@@ -113,6 +114,10 @@ class _FinancesScreenState extends State<FinancesScreen> {
                 final contribution = _parseDouble(data['contribution']);
                 final paiements = (data['paiements'] as List<dynamic>?) ?? [];
 
+                final isPaiementEnLigneActif =
+                    data['paiement_en_ligne_actif'] == true ||
+                    data['paiement_en_ligne_actif'] == 'true';
+
                 double totalPaye = 0.0;
                 for (var p in paiements) {
                   if (p['statut'] == 'success') {
@@ -134,6 +139,7 @@ class _FinancesScreenState extends State<FinancesScreen> {
                       _buildBalanceCard(
                         context,
                         soldeRestant >= 0 ? soldeRestant : 0.0,
+                        isPaiementEnLigneActif,
                       ),
                       const SizedBox(height: 32),
                       Text(
@@ -169,7 +175,11 @@ class _FinancesScreenState extends State<FinancesScreen> {
     );
   }
 
-  Widget _buildBalanceCard(BuildContext context, double soldeRestant) {
+  Widget _buildBalanceCard(
+    BuildContext context,
+    double soldeRestant,
+    bool onlineActive,
+  ) {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
@@ -227,55 +237,67 @@ class _FinancesScreenState extends State<FinancesScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                // Action pour initier un paiement KkiaPay / Fedapay
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Row(
-                      children: [
-                        Icon(Icons.payment_rounded, color: Colors.white),
-                        SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            'Intégration du portail de paiement en cours...',
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: AppTheme.primaryDark,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(
-                Icons.credit_card_rounded,
-                color: AppTheme.primaryDark,
-              ),
-              label: const Text(
-                'EFFECTUER UN PAIEMENT',
-                style: TextStyle(
+          if (onlineActive) ...[
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _showPaymentModal(context, soldeRestant, _selectedEleve.id);
+                },
+                icon: const Icon(
+                  Icons.credit_card_rounded,
                   color: AppTheme.primaryDark,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
                 ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accent, // Gold button!
-                shadowColor: AppTheme.accent.withValues(alpha: 0.5),
-                elevation: 8,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                label: const Text(
+                  'EFFECTUER UN PAIEMENT',
+                  style: TextStyle(
+                    color: AppTheme.primaryDark,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accent, // Gold button!
+                  shadowColor: AppTheme.accent.withValues(alpha: 0.5),
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
               ),
             ),
-          ),
+          ] else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Les paiements en ligne sont temporairement désactivés par la direction. Veuillez vous rapprocher de la comptabilité.',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -489,9 +511,9 @@ class _FinancesScreenState extends State<FinancesScreen> {
                         if (context.mounted) Navigator.pop(context);
 
                         if (pdfBytes != null) {
-                          await Printing.layoutPdf(
-                            onLayout: (format) async => pdfBytes,
-                            name: 'Recu_Paiement_${p['id']}.pdf',
+                          await Printing.sharePdf(
+                            bytes: pdfBytes,
+                            filename: 'Recu_Paiement_${p['id']}.pdf',
                           );
                         } else {
                           if (context.mounted) {
@@ -563,6 +585,198 @@ class _FinancesScreenState extends State<FinancesScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showPaymentModal(BuildContext context, double maxAmount, int eleveId) {
+    if (maxAmount <= 0) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _PaymentModal(maxAmount: maxAmount, eleveId: eleveId);
+      },
+    );
+  }
+}
+
+class _PaymentModal extends StatefulWidget {
+  final double maxAmount;
+  final int eleveId;
+
+  const _PaymentModal({required this.maxAmount, required this.eleveId});
+
+  @override
+  State<_PaymentModal> createState() => _PaymentModalState();
+}
+
+class _PaymentModalState extends State<_PaymentModal> {
+  final _amountController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  String _paymentMethod = 'fedapay'; // default
+  bool _isProcessing = false;
+
+  void _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final amount = double.tryParse(_amountController.text) ?? 0;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    final response = await apiService.processPayment(
+      amount,
+      _paymentMethod,
+      widget.eleveId,
+      widget.maxAmount,
+    );
+
+    setState(() {
+      _isProcessing = false;
+    });
+
+    if (mounted) {
+      Navigator.pop(context); // Close the modal
+    }
+
+    if (response != null && response['success'] == true) {
+      // Logic to launch URL or config
+      if (response['payment_url'] != null) {
+        final url = response['payment_url'];
+        _launchUrl(url);
+      } else if (response['kkiapay_config'] != null) {
+        // KkiaPay is currently only returning config for Javascript.
+        // We will notify the user or use a WebView mechanism.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'KkiaPay n\'est pas encore disponible dans l\'application native.',
+            ),
+          ),
+        );
+      }
+    } else {
+      final msg = response != null ? response['message'] : 'Erreur réseau.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: AppTheme.error),
+      );
+    }
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not launch $url');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Impossible d\'ouvrir la page: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        top: 24,
+        left: 24,
+        right: 24,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Effectuer un Paiement',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryDark,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: _amountController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Montant à payer (FCFA)',
+                hintText: 'Max: ${widget.maxAmount.toStringAsFixed(0)}',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.money),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Entrez un montant';
+                final val = double.tryParse(v);
+                if (val == null || val < 1000)
+                  return 'Montant minimum 1000 FCFA';
+                if (val > widget.maxAmount) return 'Dépasse le solde restant';
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _paymentMethod,
+              decoration: InputDecoration(
+                labelText: 'Moyen de paiement',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'fedapay',
+                  child: Text('FedaPay (Carte / Mobile Money)'),
+                ),
+                DropdownMenuItem(
+                  value: 'kkiapay',
+                  child: Text('KkiaPay (Mobile Money)'),
+                ),
+              ],
+              onChanged: (val) {
+                if (val != null) setState(() => _paymentMethod = val);
+              },
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _isProcessing ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isProcessing
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      'PAYER MAINTENANT',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

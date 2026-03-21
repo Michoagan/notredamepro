@@ -27,9 +27,9 @@ const CenseurDashboard = () => {
     useEffect(() => {
         const loadStats = async () => {
             try {
-                const data = await censeurService.getDashboardStats();
-                if (data.success) {
-                    setStats(data.data);
+                const response = await censeurService.getDashboardStats();
+                if (response.data && response.data.success) {
+                    setStats(response.data.data);
                 }
             } catch (error) {
                 console.error("Erreur chargement dashboard", error);

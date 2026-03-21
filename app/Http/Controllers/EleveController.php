@@ -32,7 +32,7 @@ class EleveController extends Controller
                   ->orWhere('nom_parent', 'like', "%{$search}%")
                   ->orWhere('telephone_parent', 'like', "%{$search}%")
                   ->orWhere('lieu_naissance', 'like', "%{$search}%")
-                  ->orWhereDate('date_naissance', 'like', "%{$search}%");
+                  ->orWhere(\DB::raw('CAST(date_naissance AS TEXT)'), 'like', "%{$search}%");
             });
         })
         ->when($classeId, function($query, $classeId) {
@@ -55,7 +55,7 @@ class EleveController extends Controller
                   ->orWhere('nom_parent', 'like', "%{$search}%")
                   ->orWhere('telephone_parent', 'like', "%{$search}%")
                   ->orWhere('lieu_naissance', 'like', "%{$search}%")
-                  ->orWhereDate('date_naissance', 'like', "%{$search}%");
+                  ->orWhere(\DB::raw('CAST(date_naissance AS TEXT)'), 'like', "%{$search}%");
             });
         })
         ->when($classeId, function($query, $classeId) {
@@ -76,7 +76,7 @@ class EleveController extends Controller
     if ($search || $classeId || $sexe || $dateNaissance) {
         $classes = $classes->filter(function($classe) {
             return $classe->eleves_count > 0;
-        });
+        })->values();
     }
     
     return response()->json([

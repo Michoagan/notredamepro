@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Eleve;
 use App\Models\Classe;
 use App\Models\Bulletin;
+use App\Models\Evenement;
 use App\Models\Note;
 use App\Models\Matiere;
 use Illuminate\Http\Request;
@@ -93,5 +94,60 @@ class SecretaireController extends Controller
             'success' => true,
             'classes' => $classes
         ]);
+    }
+
+    /**
+     * Gestion des événements (Secrétariat)
+     */
+    public function evenements()
+    {
+        $evenements = Evenement::with('classes')->orderBy('date_debut', 'desc')->get();
+        return response()->json($evenements);
+    }
+
+    public function storeEvenement(Request $request)
+    {
+        $request->validate([
+            'titre' => 'required|string|max:255',
+            'description' => 'required|string',
+            'date_debut' => 'required|date',
+            'date_fin' => 'required|date|after:date_debut',
+            'lieu' => 'nullable|string|max:255',
+            'type' => 'required|string',
+            'pour_tous' => 'boolean',
+            'classes' => 'nullable|array',
+            'classes.*' => 'exists:classes,id'
+        ]);
+
+        $evenement = Evenement::create([
+            'titre' => $request->titre,
+            'description' => $request->description,
+            'date_debut' => $request->date_debut,
+            'date_fin' => $request->date_fin,
+            'lieu' => $request->lieu,
+            'type' => $request->type,
+            'pour_tous' => $request->pour_tous ?? false,
+        ]);
+
+        if (!$evenement->pour_tous && $request->has('classes')) {
+            $evenement->classes()->sync($request->classes);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Événement créé avec succès',
+            'evenement' => $evenement->load('classes')
+        ]);
+    }
+
+    public function destroyEvenement($id)
+    {
+        try {
+            $evenement = Evenement::findOrFail($id);
+            $evenement->delete();
+            return response()->json(['success' => true, 'message' => 'Événement supprimé.']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Erreur: ' . $e->getMessage()], 500);
+        }
     }
 }

@@ -152,7 +152,7 @@ class NoteController extends Controller
                         continue; // On ignore cette note pour ne pas écraser l'existant
                     }
 
-                    Note::updateOrCreate(
+                    $note = Note::updateOrCreate(
                         [
                             'eleve_id' => $eleveId,
                             'classe_id' => $request->classe_id,
@@ -166,6 +166,15 @@ class NoteController extends Controller
                         ]
                     );
                     $notesEnregistrees++;
+
+                    // Notifier les parents
+                    $tuteurs = \App\Models\Tuteur::whereHas('eleves', function($q) use ($eleveId) {
+                        $q->where('eleves.id', $eleveId);
+                    })->get();
+                    
+                    foreach ($tuteurs as $tuteur) {
+                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note));
+                    }
                 }
             }
 

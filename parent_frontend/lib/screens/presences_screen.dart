@@ -21,6 +21,7 @@ class PresencesScreen extends StatefulWidget {
 
 class _PresencesScreenState extends State<PresencesScreen> {
   late Eleve _selectedEleve;
+  int _selectedTab = 0; // 0 for Assiduité, 1 for Discipline
 
   @override
   void initState() {
@@ -108,9 +109,13 @@ class _PresencesScreenState extends State<PresencesScreen> {
 
                 int absencesCount = 0;
                 for (var p in presences) {
-                  if (p['present'] == false || p['present'] == 0)
+                  if (p['present'] == false || p['present'] == 0) {
                     absencesCount++;
+                  }
                 }
+
+                final plaintes = (data['plaintes'] as List<dynamic>?) ?? [];
+                final sanctions = (data['sanctions'] as List<dynamic>?) ?? [];
 
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -124,16 +129,24 @@ class _PresencesScreenState extends State<PresencesScreen> {
                       _buildStatSummary(tauxPresence, absencesCount),
                       const SizedBox(height: 32),
 
-                      Text(
-                        'Historique (30 derniers jours)',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppTheme.primaryDark,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                      ),
+                      _buildSegmentedControl(),
                       const SizedBox(height: 16),
-                      _buildHistoriqueList(presences),
+
+                      if (_selectedTab == 0) ...[
+                        Text(
+                          'Historique (30 derniers jours)',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: AppTheme.primaryDark,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 20,
+                              ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildHistoriqueList(presences),
+                      ] else ...[
+                        _buildDisciplineSection(plaintes, sanctions),
+                      ],
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -354,6 +367,293 @@ class _PresencesScreenState extends State<PresencesScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSegmentedControl() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedTab = 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _selectedTab == 0 ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: _selectedTab == 0
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : [],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'Assiduité',
+                  style: TextStyle(
+                    color: _selectedTab == 0
+                        ? AppTheme.primaryDark
+                        : AppTheme.textSecondary,
+                    fontWeight: _selectedTab == 0
+                        ? FontWeight.bold
+                        : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedTab = 1),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _selectedTab == 1 ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: _selectedTab == 1
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : [],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'Discipline',
+                  style: TextStyle(
+                    color: _selectedTab == 1
+                        ? AppTheme.primaryDark
+                        : AppTheme.textSecondary,
+                    fontWeight: _selectedTab == 1
+                        ? FontWeight.bold
+                        : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisciplineSection(
+    List<dynamic> plaintes,
+    List<dynamic> sanctions,
+  ) {
+    if (plaintes.isEmpty && sanctions.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: const Column(
+          children: [
+            Icon(
+              Icons.sentiment_very_satisfied_rounded,
+              size: 48,
+              color: AppTheme.success,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Aucun problème de discipline !',
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Le comportement de l\'élève est exemplaire.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (sanctions.isNotEmpty) ...[
+          Text(
+            'Sanctions',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: AppTheme.primaryDark,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...sanctions.map((s) => _buildSanctionCard(s)),
+          const SizedBox(height: 24),
+        ],
+        if (plaintes.isNotEmpty) ...[
+          Text(
+            'Plaintes et Remarques',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: AppTheme.primaryDark,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...plaintes.map((p) => _buildPlainteCard(p)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSanctionCard(dynamic sanction) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(
+          color: AppTheme.error.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 12,
+        ),
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.error.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.gavel_rounded, color: AppTheme.error),
+        ),
+        title: Text(
+          sanction['type'] ?? 'Sanction',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppTheme.error,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Motif: ${sanction['motif'] ?? 'Non spécifié'}',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Le ${sanction['date']} par ${sanction['decision_par'] ?? 'Administration'}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlainteCard(dynamic plainte) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(
+          color: AppTheme.warning.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 12,
+        ),
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.warning.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.report_problem_rounded,
+            color: AppTheme.warning,
+          ),
+        ),
+        title: Text(
+          plainte['type'] ?? 'Remarque / Plainte',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+            fontSize: 15,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                plainte['details'] ?? 'Aucun détail fourni',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Le ${plainte['date']}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

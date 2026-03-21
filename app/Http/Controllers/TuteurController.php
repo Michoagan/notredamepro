@@ -413,8 +413,69 @@ class TuteurController extends Controller
         $progression = [];
         for ($i = 1; $i <= 3; $i++) {
             $notesTrimestre = $notes->where('trimestre', $i);
+            // On calcule la vraie moyenne pondérée s'il y a lieu, ici c'est une moyenne simple des moyennes trimestrielles
+            // L'idéal serait d'utiliser les coefficients.
             $avg = $notesTrimestre->avg('moyenne_trimestrielle');
             $progression[] = $avg ? round($avg, 2) : 0;
+        }
+
+        // --- NEW: Performances par matière (Trimestre en cours ou tous trimestres combinés) ---
+        // Pour plus de simplicité, on prend les notes du trimestre actuel (ou le max existant).
+        $trimestreActuel = $notes->max('trimestre') ?? 1;
+        $notesActuelles = $notes->where('trimestre', $trimestreActuel);
+        
+        $performancesMatieres = [];
+        foreach ($notesActuelles->groupBy('matiere_id') as $matiereId => $notesMatiere) {
+            $matiereNom = $notesMatiere->first()->matiere ? $notesMatiere->first()->matiere->nom : 'Inconnue';
+            
+            // Collecter toutes les interros et devoirs
+            $interros = [];
+            $devoirs = [];
+            
+            foreach ($notesMatiere as $note) {
+                if ($note->premier_interro !== null) $interros[] = $note->premier_interro;
+                if ($note->deuxieme_interro !== null) $interros[] = $note->deuxieme_interro;
+                if ($note->troisieme_interro !== null) $interros[] = $note->troisieme_interro;
+                if ($note->quatrieme_interro !== null) $interros[] = $note->quatrieme_interro;
+                
+                if ($note->premier_devoir !== null) $devoirs[] = $note->premier_devoir;
+                if ($note->deuxieme_devoir !== null) $devoirs[] = $note->deuxieme_devoir;
+            }
+            
+            $moyenneInterros = count($interros) > 0 ? array_sum($interros) / count($interros) : null;
+            $moyenneDevoirs = count($devoirs) > 0 ? array_sum($devoirs) / count($devoirs) : null;
+            $moyenneTrim = $notesMatiere->avg('moyenne_trimestrielle');
+            
+            // Ne renvoyer que s'il y a au moins une note
+            if ($moyenneInterros !== null || $moyenneDevoirs !== null || $moyenneTrim !== null) {
+                $performancesMatieres[] = [
+                    'matiere' => $matiereNom,
+                    'moyenne_interros' => $moyenneInterros ? round($moyenneInterros, 2) : 0,
+                    'moyenne_devoirs' => $moyenneDevoirs ? round($moyenneDevoirs, 2) : 0,
+                    'moyenne_trimestrielle' => $moyenneTrim ? round($moyenneTrim, 2) : 0,
+                ];
+            }
+        }
+
+        $notesParTrimestre = [];
+        for ($i = 1; $i <= 3; $i++) {
+            $notesTrims = $notes->where('trimestre', $i)->values();
+            if ($notesTrims->isNotEmpty()) {
+                $notesParTrimestre[] = [
+                    'trimestre' => $i,
+                    'moyenne_trimestrielle' => $progression[$i - 1] ?? 0,
+                    'matieres' => $notesTrims->map(function($n) {
+                        return [
+                            'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
+                            'interros' => array_filter([$n->premier_interro, $n->deuxieme_interro, $n->troisieme_interro, $n->quatrieme_interro], fn($v) => !is_null($v)),
+                            'devoirs' => array_filter([$n->premier_devoir, $n->deuxieme_devoir], fn($v) => !is_null($v)),
+                            'moyenne' => $n->moyenne_trimestrielle,
+                            'appreciation' => $n->appreciation,
+                            'professeur' => $n->professeur ? ($n->professeur->nom . ' ' . $n->professeur->prenom) : null,
+                        ];
+                    })->values(),
+                ];
+            }
         }
 
         return response()->json([
@@ -422,6 +483,8 @@ class TuteurController extends Controller
             'eleve' => $eleve,
             'moyenne_generale' => $progression[0] != 0 ? $progression[0] : 0, // Exemple: T1
             'progression' => $progression,
+            'performances_matieres' => $performancesMatieres,
+            'notes_par_trimestre' => $notesParTrimestre,
             'recent_notes' => $notes->take(10)->map(function($note) {
                 // Heuristique pour déterminer la note récente à afficher
                 $type = 'Évaluation';
@@ -478,6 +541,14 @@ class TuteurController extends Controller
         $joursPresents = $presences->where('present', true)->count();
         $tauxPresence = $totalJours > 0 ? ($joursPresents / $totalJours) * 100 : 100;
 
+        $plaintes = \App\Models\Plainte::where('eleve_id', $eleve->id)
+            ->orderBy('date_plainte', 'desc')
+            ->get();
+
+        $sanctions = \App\Models\Sanction::where('eleve_id', $eleve->id)
+            ->orderBy('date_incident', 'desc')
+            ->get();
+
         return response()->json([
             'success' => true,
             'eleve' => $eleve,
@@ -490,6 +561,220 @@ class TuteurController extends Controller
                     'matiere' => $p->professeur ? 'Cours avec ' . $p->professeur->nom : 'Cours', // Mock si cours_id non défini
                 ];
             })->values(),
+            'plaintes' => $plaintes->map(function($p) {
+                return [
+                    'id' => $p->id,
+                    'date' => \Carbon\Carbon::parse($p->date_plainte)->format('Y-m-d'),
+                    'type' => $p->type_plainte ?? 'Plainte',
+                    'details' => $p->details,
+                    'statut' => $p->statut ?? 'Nouvelle',
+                    'sanction' => $p->sanction,
+                ];
+            })->values(),
+            'sanctions' => $sanctions->map(function($s) {
+                return [
+                    'id' => $s->id,
+                    'date' => \Carbon\Carbon::parse($s->date_incident)->format('Y-m-d'),
+                    'type' => $s->type ?? 'Sanction',
+                    'motif' => $s->motif,
+                    'status' => $s->status ?? 'Active',
+                    'decision_par' => $s->decision_par,
+                ];
+            })->values(),
+        ]);
+    }
+
+    public function emploiDuTemps($id)
+    {
+        try {
+            $parent = Auth::user();
+            
+            // Validate the student belongs to the parent
+            $eleve = $parent->eleves()->findOrFail($id);
+
+            // Fetch the schedule applying to that student's class
+            $emploisDuTemps = \App\Models\EmploiDuTemps::with(['matiere:id,nom', 'professeur:id,nom,prenom'])
+                ->where('classe_id', $eleve->classe_id)
+                ->orderByRaw("CASE jour 
+                    WHEN 'Lundi' THEN 1 
+                    WHEN 'Mardi' THEN 2 
+                    WHEN 'Mercredi' THEN 3 
+                    WHEN 'Jeudi' THEN 4 
+                    WHEN 'Vendredi' THEN 5 
+                    WHEN 'Samedi' THEN 6 
+                    ELSE 7 END")
+                ->orderBy('heure_debut', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'emplois_du_temps' => $emploisDuTemps
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erreur getEmploiDuTemps Tuteur: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur est survenue lors de la récupération de l\'emploi du temps.',
+            ], 500);
+        }
+    }
+
+    public function getConvocations($id)
+    {
+        try {
+            $parent = Auth::user();
+            $eleve = $parent->eleves()->findOrFail($id);
+
+            // Fetch composed sessions for the student's class or global
+            $sessions = \App\Models\SessionComposition::with(['horaires.matiere:id,nom'])
+                ->where(function ($query) use ($eleve) {
+                    $query->where('is_global', true)
+                          ->orWhere('classe_id', $eleve->classe_id);
+                })
+                ->whereHas('horaires', function ($query) {
+                    $query->where('date_composition', '>=', now()->format('Y-m-d'));
+                })
+                ->get();
+
+            $convocations = $sessions->map(function ($session) {
+                // Filter only horaires relevant to this class if it were possible, 
+                // but if it's global, all classes do it. We assume the censeur 
+                // scheduled the exact subjects the class takes.
+                $premierExamen = $session->horaires->min('date_composition');
+                
+                // Diff in days relative to today
+                $aujourdhui = now()->startOfDay();
+                $dateExam = \Carbon\Carbon::parse($premierExamen)->startOfDay();
+                
+                $joursRestants = $aujourdhui->diffInDays($dateExam, false); // negative if past exam
+                $isDownloadable = ($joursRestants >= 0 && $joursRestants <= 7);
+
+                return [
+                    'session' => $session,
+                    'premier_examen' => $premierExamen,
+                    'jours_restants' => $joursRestants,
+                    'is_downloadable' => $isDownloadable,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'convocations' => $convocations
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erreur getConvocations Tuteur: '.$e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des convocations.'
+            ], 500);
+        }
+    }
+
+    public function getAlertesScolarite()
+    {
+        try {
+            $parent = \Illuminate\Support\Facades\Auth::user();
+            $eleves = $parent->eleves()->with('classe')->get();
+            $anneeRecherche = \App\Models\Contribution::getAnneeScolaireCourante();
+
+            $tranches = \App\Models\TrancheScolarite::where('annee_scolaire', $anneeRecherche)
+                ->orderBy('pourcentage')
+                ->get();
+
+            $alertes = [];
+
+            if ($tranches->isEmpty()) {
+                return response()->json(['success' => true, 'alertes' => []]);
+            }
+
+            foreach ($eleves as $eleve) {
+                $scolarite = \App\Models\Contribution::where('classe_id', $eleve->classe_id)
+                    ->where('type', \App\Models\Contribution::TYPE_SCOLARITE)
+                    ->where('annee_scolaire', $anneeRecherche)
+                    ->first();
+
+                if (!$scolarite) continue;
+
+                $totalPaye = $eleve->paiementsReussis()
+                    ->where('contribution_id', $scolarite->id)
+                    ->sum('montant');
+
+                $montantTotal = $scolarite->montant_total;
+                
+                foreach ($tranches as $tranche) {
+                    $montantRequis = ($montantTotal * $tranche->pourcentage) / 100;
+                    
+                    if ($totalPaye < $montantRequis) {
+                        $dateLimite = \Carbon\Carbon::parse($tranche->date_limite)->startOfDay();
+                        $aujourdhui = now()->startOfDay();
+                        
+                        $joursRestants = $aujourdhui->diffInDays($dateLimite, false);
+                        
+                        if ($joursRestants <= 14) {
+                            $montantManquant = $montantRequis - $totalPaye;
+                            $alertes[] = [
+                                'eleve_id' => $eleve->id,
+                                'eleve_nom' => $eleve->nom_complet,
+                                'tranche_nom' => $tranche->nom,
+                                'date_limite' => $dateLimite->format('Y-m-d'),
+                                'jours_restants' => $joursRestants,
+                                'montant_manquant' => $montantManquant,
+                                'pourcentage_requis' => $tranche->pourcentage,
+                            ];
+                        }
+                        break;
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'alertes' => $alertes
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erreur getAlertesScolarite: '.$e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Erreur API'], 500);
+        }
+    }
+
+    public function getNotifications(Request $request)
+    {
+        $parent = Auth::user();
+
+        // Récupérer les notifications, triées par date (les plus récentes d'abord)
+        $notifications = $parent->notifications()->orderBy('created_at', 'desc')->paginate(20);
+
+        return response()->json([
+            'success' => true,
+            'notifications' => $notifications->map(function($notification) {
+                return [
+                    'id' => $notification->id,
+                    'data' => $notification->data,
+                    'is_read' => $notification->read_at !== null,
+                    'created_at' => $notification->created_at->toDateTimeString(),
+                    'created_at_human' => $notification->created_at->diffForHumans(),
+                ];
+            }),
+            'unread_count' => $parent->unreadNotifications->count(),
+        ]);
+    }
+
+    public function markNotificationAsRead(Request $request, $id)
+    {
+        $parent = Auth::user();
+
+        $notification = $parent->notifications()->where('id', $id)->first();
+        if ($notification) {
+            $notification->markAsRead();
+        }
+
+        return response()->json([
+            'success' => true,
+            'unread_count' => $parent->unreadNotifications->count(),
         ]);
     }
 }

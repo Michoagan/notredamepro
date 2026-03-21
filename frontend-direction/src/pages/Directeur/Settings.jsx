@@ -3,10 +3,22 @@ import { getSettings, updateSettings } from '../../services/directeur';
 import { Loader2, Save, Calendar } from 'lucide-react';
 
 export default function Settings() {
-    const [settings, setSettings] = useState({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState(null);
+    const [formData, setFormData] = useState({
+        annee_scolaire_debut: '',
+        annee_scolaire_fin: '',
+        current_annee_scolaire: '', // Will be populated from API or default
+        current_trimestre: '',     // Will be populated from API or default
+        trimestre_1_debut: '',
+        trimestre_1_fin: '',
+        trimestre_2_debut: '',
+        trimestre_2_fin: '',
+        trimestre_3_debut: '',
+        trimestre_3_fin: '',
+        paiement_en_ligne_actif: false
+    });
 
     useEffect(() => {
         loadSettings();
@@ -15,7 +27,13 @@ export default function Settings() {
     const loadSettings = async () => {
         try {
             const data = await getSettings();
-            setSettings(data);
+            // Ensure boolean for checkbox and default for new fields if not present
+            setFormData({
+                ...data,
+                current_annee_scolaire: data.current_annee_scolaire || '2025-2026', // Default value
+                current_trimestre: data.current_trimestre || '1', // Default value
+                paiement_en_ligne_actif: data.paiement_en_ligne_actif === '1' || data.paiement_en_ligne_actif === true
+            });
         } catch (error) {
             console.error(error);
         } finally {
@@ -24,7 +42,11 @@ export default function Settings() {
     };
 
     const handleChange = (e) => {
-        setSettings({ ...settings, [e.target.name]: e.target.value });
+        const { name, value, type, checked } = e.target;
+        setFormData(prevFormData => ({
+            ...prevFormData,
+            [name]: type === 'checkbox' ? checked : value
+        }));
     };
 
     const handleSubmit = async (e) => {
@@ -32,7 +54,12 @@ export default function Settings() {
         setSaving(true);
         setMessage(null);
         try {
-            await updateSettings(settings);
+            // Convert boolean back to '1' or '0' for backend if needed, or send as boolean
+            const dataToSend = {
+                ...formData,
+                paiement_en_ligne_actif: formData.paiement_en_ligne_actif ? '1' : '0'
+            };
+            await updateSettings(dataToSend);
             setMessage({ type: 'success', text: 'Paramètres mis à jour avec succès.' });
         } catch (error) {
             setMessage({ type: 'error', text: 'Erreur lors de la mise à jour.' });
@@ -58,21 +85,50 @@ export default function Settings() {
 
             <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-8">
 
-                {/* Année Scolaire */}
-                <div>
-                    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
+                {/* Configuration Globale */}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
                         <Calendar className="w-5 h-5 mr-2 text-blue-600" />
-                        Année Scolaire
+                        Configuration Globale (Année Scolaire)
                     </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-slate-50 rounded-lg border border-slate-100 mb-6">
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Année Scolaire Courante</label>
+                            <input
+                                type="text"
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                placeholder="ex: 2025-2026"
+                                name="current_annee_scolaire"
+                                value={formData.current_annee_scolaire}
+                                onChange={handleChange}
+                            />
+                            <p className="text-xs text-slate-500 mt-1">Utilisé globalement dans le système et sur les bulletins.</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Trimestre Courant</label>
+                            <select
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                name="current_trimestre"
+                                value={formData.current_trimestre}
+                                onChange={handleChange}
+                            >
+                                <option value="1">1er Trimestre</option>
+                                <option value="2">2ème Trimestre</option>
+                                <option value="3">3ème Trimestre</option>
+                            </select>
+                            <p className="text-xs text-slate-500 mt-1">S'applique par défaut aux formulaires de notes etc.</p>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Début de l'année</label>
                             <input
                                 type="date"
                                 name="annee_scolaire_debut"
-                                required
                                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={settings.annee_scolaire_debut || ''}
+                                value={formData.annee_scolaire_debut || ''}
                                 onChange={handleChange}
                             />
                         </div>
@@ -81,9 +137,8 @@ export default function Settings() {
                             <input
                                 type="date"
                                 name="annee_scolaire_fin"
-                                required
                                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={settings.annee_scolaire_fin || ''}
+                                value={formData.annee_scolaire_fin || ''}
                                 onChange={handleChange}
                             />
                         </div>
@@ -105,7 +160,7 @@ export default function Settings() {
                                     type="date"
                                     name="trimestre_1_debut"
                                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={settings.trimestre_1_debut || ''}
+                                    value={formData.trimestre_1_debut || ''}
                                     onChange={handleChange}
                                 />
                             </div>
@@ -115,7 +170,7 @@ export default function Settings() {
                                     type="date"
                                     name="trimestre_1_fin"
                                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={settings.trimestre_1_fin || ''}
+                                    value={formData.trimestre_1_fin || ''}
                                     onChange={handleChange}
                                 />
                             </div>
@@ -129,7 +184,7 @@ export default function Settings() {
                                     type="date"
                                     name="trimestre_2_debut"
                                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={settings.trimestre_2_debut || ''}
+                                    value={formData.trimestre_2_debut || ''}
                                     onChange={handleChange}
                                 />
                             </div>
@@ -139,7 +194,7 @@ export default function Settings() {
                                     type="date"
                                     name="trimestre_2_fin"
                                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={settings.trimestre_2_fin || ''}
+                                    value={formData.trimestre_2_fin || ''}
                                     onChange={handleChange}
                                 />
                             </div>
@@ -153,7 +208,7 @@ export default function Settings() {
                                     type="date"
                                     name="trimestre_3_debut"
                                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={settings.trimestre_3_debut || ''}
+                                    value={formData.trimestre_3_debut || ''}
                                     onChange={handleChange}
                                 />
                             </div>
@@ -163,11 +218,40 @@ export default function Settings() {
                                     type="date"
                                     name="trimestre_3_fin"
                                     className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={settings.trimestre_3_fin || ''}
+                                    value={formData.trimestre_3_fin || ''}
                                     onChange={handleChange}
                                 />
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-6"></div>
+
+                {/* Paiements en ligne */}
+                <div>
+                    <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
+                        <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                        Paiements
+                    </h2>
+
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <div>
+                            <div className="font-medium text-slate-800">Paiement en ligne (Application Parents)</div>
+                            <div className="text-sm text-slate-500">Autorise les parents à effectuer des paiements depuis l'application mobile.</div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                name="paiement_en_ligne_actif"
+                                className="sr-only peer"
+                                checked={formData.paiement_en_ligne_actif === '1' || formData.paiement_en_ligne_actif === 'true' || formData.paiement_en_ligne_actif === true}
+                                onChange={handleChange}
+                            />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
                     </div>
                 </div>
 

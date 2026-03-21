@@ -8,8 +8,12 @@ import 'notes_screen.dart';
 import 'presences_screen.dart';
 import 'finances_screen.dart';
 import 'communication_screen.dart';
+import 'dart:async';
 import 'change_password_screen.dart';
 import 'login_screen.dart';
+import 'notifications_screen.dart';
+import 'emploi_du_temps_screen.dart';
+import 'convocations_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,11 +27,91 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _parentName = "Parent";
   List<Eleve> _mesEnfants = [];
   Eleve? _selectedEnfant;
+  List<dynamic> _alertesScolarite = [];
+  int _unreadNotifications = 0;
+  Timer? _notificationTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _loadNotifications();
+
+    // Polling every 30 seconds
+    _notificationTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _loadNotifications();
+    });
+  }
+
+  @override
+  void dispose() {
+    _notificationTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadAlertesScolarite() async {
+    if (!mounted) return;
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    final data = await apiService.getAlertesScolarite();
+    if (data != null && data['success'] == true && mounted) {
+      setState(() {
+        _alertesScolarite = data['alertes'] ?? [];
+      });
+    }
+  }
+
+  Future<void> _loadNotifications() async {
+    if (!mounted) return;
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    final data = await apiService.getNotifications();
+    if (data != null && data['success'] == true && mounted) {
+      final int newCount = data['unread_count'] ?? 0;
+      if (newCount > _unreadNotifications && _unreadNotifications > 0) {
+        // Show a local in-app notification
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.notifications_active_rounded,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Vous avez une nouvelle notification',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.primary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'VOIR',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationsScreen(),
+                      ),
+                    )
+                    .then((_) => _loadNotifications());
+              },
+            ),
+          ),
+        );
+      }
+
+      setState(() {
+        _unreadNotifications = newCount;
+      });
+    }
   }
 
   Future<void> _loadDashboardData() async {
@@ -54,6 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
           _isLoading = false;
         });
+        _loadAlertesScolarite();
       }
     } else {
       if (mounted) {
@@ -76,6 +161,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Widget _buildAlerteBanner(dynamic alerte) {
+    final nom = alerte['eleve_nom'] ?? '';
+    final tranche = alerte['tranche_nom'] ?? '';
+    final jours = alerte['jours_restants'] ?? 0;
+
+    final daysText = jours == 0 ? "Aujourd'hui" : "dans $jours jour(s)";
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.red.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.warning_rounded, color: Colors.red),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Alerte Scolarité : $nom',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Le délai pour la $tranche est $daysText. Veuillez régulariser la situation.',
+                  style: TextStyle(color: Colors.red.shade900, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -94,6 +230,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_alertesScolarite.isNotEmpty)
+                          ..._alertesScolarite.map(
+                            (alerte) => _buildAlerteBanner(alerte),
+                          ),
+
                         // Enfant Selector Section
                         Container(
                           margin: const EdgeInsets.symmetric(
@@ -257,6 +398,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         );
                                       },
                                     ),
+                                    _buildActionCard(
+                                      context,
+                                      title: 'Emploi du Temps',
+                                      icon: Icons.schedule_rounded,
+                                      color: Colors.indigo,
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => EmploiDuTempsScreen(
+                                              eleve: _selectedEnfant!.toJson(),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    _buildActionCard(
+                                      context,
+                                      title: 'Convocations & Devoirs',
+                                      icon: Icons.assignment_turned_in_rounded,
+                                      color: Colors.teal,
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ConvocationsScreen(
+                                              enfants: _mesEnfants,
+                                              initialEleve: _selectedEnfant!,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 40),
@@ -358,6 +532,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
+            ],
+          ),
+          Spacer(),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(
+                  Icons.notifications_outlined,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                onPressed: () {
+                  Navigator.of(context)
+                      .push(
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationsScreen(),
+                        ),
+                      )
+                      .then((_) {
+                        // Recharger après fermeture de l'écran des notifications
+                        _loadNotifications();
+                      });
+                },
+              ),
+              if (_unreadNotifications > 0)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: AppTheme.error,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      _unreadNotifications > 9
+                          ? '9+'
+                          : _unreadNotifications.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
           PopupMenuButton<String>(

@@ -16,9 +16,9 @@ const SuiviPedagogique = () => {
     const loadLogs = async () => {
         setLoading(true);
         try {
-            const data = await censeurService.getLogs();
-            if (data.success) {
-                setLogs(data.logs.data);
+            const response = await censeurService.getLogs();
+            if (response.data && response.data.success) {
+                setLogs(response.data.logs?.data || response.data.logs || []);
             }
         } catch (error) {
             console.error(error);

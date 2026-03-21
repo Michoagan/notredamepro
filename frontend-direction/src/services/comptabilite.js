@@ -1,5 +1,9 @@
 import api from './api';
 
+// ----------------------
+// DASHBOARD & DEPENSES
+// ----------------------
+
 const COMPTA_API = '/direction/comptabilite';
 
 // Dashboard
@@ -12,7 +16,7 @@ export const getComptaDashboard = async (startDate, endDate) => {
     return response.data;
 };
 
-// Dépenses
+// ----------------------
 export const getDepenses = async () => {
     const response = await api.get(`${COMPTA_API}/depenses`);
     return response.data;
@@ -76,8 +80,15 @@ export const getArticleHistory = async (id) => {
     return response.data;
 };
 
-// Ventes
-export const storeVente = async (data) => {
-    const response = await api.post(`${COMPTA_API}/ventes`, data);
+// Ventes ont été déplacés vers Caisse
+
+// Tranches de Scolarité
+export const getTranchesScolarite = async () => {
+    const response = await api.get(`${COMPTA_API}/tranches-scolarite`);
+    return response.data;
+};
+
+export const saveTranchesScolarite = async (tranchesData) => {
+    const response = await api.post(`${COMPTA_API}/tranches-scolarite`, { tranches: tranchesData });
     return response.data;
 };

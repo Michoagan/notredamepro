@@ -21,6 +21,9 @@ import 'parent_contact_screen.dart';
 import '../widgets/modern_dashboard_header.dart';
 import '../widgets/premium_stat_card.dart';
 import 'change_code_screen.dart';
+import 'conduites_screen.dart';
+import 'emploi_du_temps_screen.dart';
+import 'paiements_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -320,6 +323,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 },
                               ),
                               QuickActionCard(
+                                title: 'Emploi du\nTemps',
+                                icon: Icons.schedule,
+                                color: Colors.indigo,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const EmploiDuTempsScreen()),
+                                  );
+                                },
+                              ),
+                              QuickActionCard(
+                                title: 'Note de\nConduite',
+                                icon: Icons.assignment_ind_outlined,
+                                color: Colors.teal,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            ConduitesScreen(classes: _classes)),
+                                  );
+                                },
+                              ),
+                              QuickActionCard(
                                 title: 'Contacts\nParents',
                                 icon: Icons.contact_phone_outlined,
                                 color: AppTheme.accent,
@@ -329,6 +358,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     MaterialPageRoute(
                                         builder: (context) =>
                                             const ParentContactScreen()),
+                                  );
+                                },
+                              ),
+                              QuickActionCard(
+                                title: 'Mes\nPaiements',
+                                icon: Icons.payments_outlined,
+                                color:
+                                    Colors.green, // Dedicated color for payroll
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            PaiementsScreen()),
                                   );
                                 },
                               ),

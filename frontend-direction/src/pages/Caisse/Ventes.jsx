@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { getArticles, storeVente } from '../../services/comptabilite';
+import { getArticles } from '../../services/comptabilite';
+import { storeVente } from '../../services/caisse';
 import { getEleves } from '../../services/secretariat';
 import { Loader2, ShoppingCart, Search, User, Trash2, CheckCircle } from 'lucide-react';
 
@@ -49,13 +50,19 @@ export default function Ventes() {
 
     const searchEleves = async () => {
         try {
-            // Assuming getEleves accepts a search parameter 'nom' or generic query
-            const data = await getEleves({ search: searchStudent });
-            // data might be wrapped in data property or array directly depending on API
-            setStudents(Array.isArray(data) ? data : data.data || []);
+            const response = await getEleves({ search: searchStudent });
+            // The API returns { success: true, classes: [{...eleves: []}] }
+            if (response.classes) {
+                const flatStudents = response.classes.flatMap(c =>
+                    c.eleves.map(e => ({ ...e, classe: { nom: c.nom } }))
+                );
+                setStudents(flatStudents);
+            } else {
+                setStudents([]);
+            }
             setShowStudentResults(true);
         } catch (err) {
-            console.error(err);
+            console.error('Erreur recherche elèves', err);
         }
     };
 

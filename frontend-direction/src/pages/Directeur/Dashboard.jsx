@@ -1,5 +1,6 @@
-import React from 'react';
-import { TrendingUp, Users, DollarSign, Activity } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { TrendingUp, Users, DollarSign, Activity, BookOpen, Layers } from 'lucide-react';
+import { getDirecteurDashboard } from '../../services/directeur';
 
 const KPICard = ({ label, value, trend, icon: Icon, color }) => (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
@@ -15,6 +16,36 @@ const KPICard = ({ label, value, trend, icon: Icon, color }) => (
 );
 
 export default function DirecteurDashboard() {
+    const [stats, setStats] = useState({
+        eleves: 0,
+        professeurs: 0,
+        classes: 0,
+    });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        loadDashboardStats();
+    }, []);
+
+    const loadDashboardStats = async () => {
+        try {
+            const data = await getDirecteurDashboard();
+            if (data.success) {
+                setStats({
+                    eleves: data.data.eleves_count,
+                    professeurs: data.data.professeurs_count,
+                    classes: data.data.classes_count,
+                });
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) return <div className="p-8 text-center text-slate-500">Chargement...</div>;
+
     return (
         <div className="p-8 space-y-8">
             <header>
@@ -23,13 +54,13 @@ export default function DirecteurDashboard() {
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KPICard label="Effectif Total" value="1,240" trend="5" icon={Users} color="bg-blue-600" />
-                <KPICard label="Recettes du mois" value="12M FCFA" trend="12" icon={DollarSign} color="bg-emerald-600" />
-                <KPICard label="Taux de Réussite Global" value="87%" icon={TrendingUp} color="bg-purple-600" />
-                <KPICard label="Activité Plateforme" value="Elevée" icon={Activity} color="bg-orange-600" />
+                <KPICard label="Effectif Élèves" value={stats.eleves} icon={Users} color="bg-blue-600" />
+                <KPICard label="Total Professeurs" value={stats.professeurs} icon={TrendingUp} color="bg-emerald-600" />
+                <KPICard label="Total Classes" value={stats.classes} icon={BookOpen} color="bg-purple-600" />
+                <KPICard label="Activité Plateforme" value="Élevée" icon={Activity} color="bg-orange-600" />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-80">
                     <h3 className="font-semibold text-lg mb-4">Évolution des Inscriptions</h3>
                     <div className="flex items-center justify-center h-full text-slate-400">

@@ -10,7 +10,13 @@ export default function Presence() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        api.get('/classes/index').then(res => setClasses(res.data)).catch(console.error);
+        api.get('/classes/index')
+            .then(res => {
+                // Handle both direct array and object with 'classes' property
+                const classesData = Array.isArray(res.data) ? res.data : (res.data.classes || []);
+                setClasses(classesData);
+            })
+            .catch(console.error);
     }, []);
 
     useEffect(() => {

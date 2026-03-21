@@ -63,6 +63,10 @@ class BulletinController extends Controller
                         ->with('matiere')
                         ->get();
             
+            $conduite = \App\Models\Conduite::where('eleve_id', $eleveId)
+                        ->where('trimestre', $trimestre)
+                        ->first();
+            
             $moyenneGenerale = $this->calculerMoyenneGenerale($notes);
             $rang = $this->calculerRang($eleve->classe_id, $trimestre, $moyenneGenerale);
             $statistiques = $this->getStatistiquesClasse($eleve->classe_id, $trimestre);
@@ -79,6 +83,7 @@ class BulletinController extends Controller
                 'notes' => $notes,
                 'moyenne_generale' => $moyenneGenerale,
                 'moyenne_annuelle' => $moyenneAnnuelle,
+                'conduite' => $conduite,
                 'rang' => $rang,
                 'effectif_classe' => Eleve::where('classe_id', $eleve->classe_id)->count(),
                 'minAverage' => $statistiques['min'],
@@ -173,6 +178,8 @@ class BulletinController extends Controller
             abort(404, 'Bulletin non trouvé');
         }
         
+        $anneeScolaire = \App\Models\Setting::where('key', 'current_annee_scolaire')->value('value') ?? '2025-2026';
+
         // Générer le QR code localement avec endroid/qr-code
         $qrData = [
             'eleve_id' => $bulletinData['eleve']->id,
@@ -181,26 +188,26 @@ class BulletinController extends Controller
             'classe' => $bulletinData['eleve']->classe->nom,
             'trimestre' => $trimestre,
             'moyenne' => $bulletinData['moyenne_generale'],
-            'annee_scolaire' => "2025-2026"
+            'annee_scolaire' => $anneeScolaire
         ];
         
         $qrText = json_encode($qrData);
         
         // Créer le QR code
-        $qrCode = QrCode::create($qrText)
-            ->setEncoding(new Encoding('UTF-8'))
-            ->setErrorCorrectionLevel(ErrorCorrectionLevel::Low)
-            ->setSize(100)
-            ->setMargin(10)
-            ->setRoundBlockSizeMode(RoundBlockSizeMode::Margin)
-            ->setForegroundColor(new Color(0, 0, 0))
-            ->setBackgroundColor(new Color(255, 255, 255));
-        
-        $writer = new PngWriter();
-        $qrCodeResult = $writer->write($qrCode);
+        $result = \Endroid\QrCode\Builder\Builder::create()
+            ->writer(new PngWriter())
+            ->data($qrText)
+            ->encoding(new Encoding('UTF-8'))
+            ->errorCorrectionLevel(ErrorCorrectionLevel::Low)
+            ->size(100)
+            ->margin(10)
+            ->roundBlockSizeMode(RoundBlockSizeMode::Margin)
+            ->foregroundColor(new Color(0, 0, 0))
+            ->backgroundColor(new Color(255, 255, 255))
+            ->build();
         
         // Convertir en base64 pour l'affichage dans le PDF
-        $qrCodeImage = base64_encode($qrCodeResult->getString());
+        $qrCodeImage = base64_encode($result->getString());
         
         $pdf = Pdf::loadView('pdf.bulletin', [
             'data' => $bulletinData,

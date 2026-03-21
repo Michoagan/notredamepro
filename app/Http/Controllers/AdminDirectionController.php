@@ -64,7 +64,7 @@ class AdminDirectionController extends Controller
             'gender' => ['required', 'in:M,F'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:direction,email'],
             'phone' => ['required', 'string', 'max:20'],
-            'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable'],
+            'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable,caisse'],
             'password' => ['required', 'string', 'min:8'],
         ]);
 
@@ -86,7 +86,7 @@ class AdminDirectionController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Utilisateur créé avec succès.',
-            'user' => $user
+            'user' => $user,
         ], 201);
     }
 
@@ -135,9 +135,9 @@ class AdminDirectionController extends Controller
             \Log::error('Erreur envoi notification approbation: '.$e->getMessage());
 
             return response()->json([
-                'success' => true, 
+                'success' => true,
                 'message' => 'Compte approuvé mais échec de l\'envoi de l\'email.',
-                'warning' => true
+                'warning' => true,
             ]);
         }
 
@@ -225,7 +225,7 @@ class AdminDirectionController extends Controller
             'first_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:direction,email,'.$id],
             'phone' => ['required', 'string', 'max:20'],
-            'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable'],
+            'role' => ['required', 'in:directeur,censeur,surveillant,secretariat,comptable,caisse'],
         ]);
 
         $account->update($request->only(['last_name', 'first_name', 'email', 'phone', 'role']));

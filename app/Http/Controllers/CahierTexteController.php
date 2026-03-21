@@ -85,6 +85,31 @@ public function storeCahierTexte(Request $request)
     if (!$professeur->classes->contains($request->classe_id)) {
         return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
     }
+
+    // Vérifier que le cours est programmé pour ce jour-là
+    $jourSemaineIndex = date('N', strtotime($request->date_cours));
+    $joursMap = [
+        1 => 'Lundi',
+        2 => 'Mardi',
+        3 => 'Mercredi',
+        4 => 'Jeudi',
+        5 => 'Vendredi',
+        6 => 'Samedi',
+        7 => 'Dimanche'
+    ];
+    $jourNom = $joursMap[$jourSemaineIndex];
+
+    $estProgramme = \App\Models\EmploiDuTemps::where('professeur_id', $professeur->id)
+        ->where('classe_id', $request->classe_id)
+        ->where('jour', $jourNom)
+        ->exists();
+
+    if (!$estProgramme) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Aucun cours n\'est programmé pour cette classe ce jour-là (' . $jourNom . ') dans votre emploi du temps.'
+        ], 422);
+    }
     
     try {
         CahierTexte::updateOrCreate(

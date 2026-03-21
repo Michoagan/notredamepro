@@ -45,4 +45,18 @@
       recentNotes: json['recent_notes'] as List<dynamic>?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'nom': nom,
+      'prenom': prenom,
+      'matricule': matricule,
+      'date_naissance': dateNaissance,
+      'classe': {'nom': classeName},
+      'taux_presence': tauxPresence,
+      'solde_restant': soldeRestant,
+      'recent_notes': recentNotes,
+    };
+  }
 }

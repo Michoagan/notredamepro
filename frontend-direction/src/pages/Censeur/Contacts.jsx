@@ -14,7 +14,7 @@ const Contacts = () => {
     const loadContacts = async () => {
         try {
             const response = await censeurService.getContacts();
-            if (response.data.success) {
+            if (response.data && response.data.success) {
                 setProfesseurs(response.data.professeurs);
             }
         } catch (error) {
@@ -24,10 +24,12 @@ const Contacts = () => {
         }
     };
 
-    const filteredProfs = professeurs.filter(p =>
-        p.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.prenom.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredProfs = professeurs.filter(p => {
+        const nom = p.last_name || '';
+        const prenom = p.first_name || '';
+        return nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            prenom.toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
     return (
         <div className="space-y-6">
@@ -55,12 +57,12 @@ const Contacts = () => {
                         <div key={prof.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition">
                             <div className="flex items-center space-x-4 mb-4">
                                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
-                                    {prof.nom[0]}{prof.prenom[0]}
+                                    {(prof.last_name && prof.last_name[0]) || ''}{(prof.first_name && prof.first_name[0]) || ''}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-slate-900">{prof.nom} {prof.prenom}</h3>
+                                    <h3 className="font-bold text-slate-900">{prof.last_name} {prof.first_name}</h3>
                                     <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full uppercase">
-                                        {prof.specialite || 'Professeur'}
+                                        {prof.matiere ? prof.matiere.nom : (prof.specialite || 'Professeur')}
                                     </span>
                                 </div>
                             </div>

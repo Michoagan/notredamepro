@@ -10,7 +10,6 @@ const ProfesseurForm = ({ isOpen, onClose, professeur, onSuccess }) => {
         birth_date: '',
         email: '',
         phone: '',
-        phone: '',
         matiere_id: '',
         photo: null
     });

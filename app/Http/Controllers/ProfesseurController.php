@@ -350,46 +350,158 @@ class ProfesseurController extends Controller
         ]);
     }
 
-    public function dashboard()
+    public function dashboard(Request $request)
     {
-        // Auth via Sanctum
-        $professeur = Auth::user();
-        // ...
+        try {
+            // Auth via Sanctum
+            $professeur = $request->user();
+            // ...
 
-        // Charger les classes avec les élèves ET la matière
-        $professeur->load(['matiere', 'classes.eleves' => function ($query) {
-            $query->orderBy('nom')->orderBy('prenom');
-        }]);
+            // Charger les classes avec les élèves ET la matière
+            $professeur->load(['matiere', 'classes.eleves' => function ($query) {
+                $query->orderBy('nom')->orderBy('prenom');
+            }]);
 
-        // Récupérer les statistiques
-        $stats = [
-            'classes_count' => $professeur->classes->count(),
-            'eleves_count' => $professeur->classes->sum(function ($classe) {
-                return $classe->eleves->count();
-            }),
-            'cours_semaine' => \App\Models\EmploiDuTemps::where('professeur_id', $professeur->id)->count(),
-        ];
+            // Récupérer les statistiques
+            $stats = [
+                'classes_count' => $professeur->classes->count(),
+                'eleves_count' => $professeur->classes->sum(function ($classe) {
+                    return $classe->eleves->count();
+                }),
+                'cours_semaine' => \App\Models\EmploiDuTemps::where('professeur_id', $professeur->id)->count(),
+            ];
 
-        // Récupérer les communiqués récents (Général ou Professeurs)
-        $communiques = \App\Models\Communique::whereIn('type', ['general', 'professeurs'])
-            ->where('is_published', true)
-            ->orderBy('created_at', 'desc')
-            ->take(5)
-            ->get();
+            // Récupérer les communiqués récents (Général ou Professeurs)
+            $communiques = \App\Models\Communique::whereIn('type', ['general', 'professeurs'])
+                ->where('is_published', true)
+                ->orderBy('created_at', 'desc')
+                ->take(5)
+                ->get();
 
-        // Récupérer les événements à venir
-        $evenements = \App\Models\Evenement::where('date_fin', '>=', now())
-            ->orderBy('date_debut', 'asc')
-            ->take(5)
-            ->get();
+            // Récupérer les événements à venir
+            $evenements = \App\Models\Evenement::where('date_fin', '>=', now())
+                ->orderBy('date_debut', 'asc')
+                ->take(5)
+                ->get();
 
-        return response()->json([
-            'success' => true,
-            'professeur' => $professeur,
-            'stats' => $stats,
-            'communiques' => $communiques,
-            'evenements' => $evenements,
-        ]);
+            return response()->json([
+                'success' => true,
+                'professeur' => $professeur,
+                'stats' => $stats,
+                'communiques' => $communiques,
+                'evenements' => $evenements,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    }
+
+    public function emploiDuTemps()
+    {
+        try {
+            $professeur = Auth::user();
+
+            if (! $professeur instanceof Professeur) {
+                return response()->json(['error' => 'Non autorisé'], 403);
+            }
+
+            // Récupérer l'emploi du temps avec relations
+            $emploisDuTemps = \App\Models\EmploiDuTemps::with(['classe:id,nom', 'matiere:id,nom'])
+                ->where('professeur_id', $professeur->id)
+                ->orderByRaw("CASE jour 
+                    WHEN 'Lundi' THEN 1 
+                    WHEN 'Mardi' THEN 2 
+                    WHEN 'Mercredi' THEN 3 
+                    WHEN 'Jeudi' THEN 4 
+                    WHEN 'Vendredi' THEN 5 
+                    WHEN 'Samedi' THEN 6 
+                    ELSE 7 END")
+                ->orderBy('heure_debut', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'emplois_du_temps' => $emploisDuTemps
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Erreur getEmploiDuTemps Professeur: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur est survenue lors de la récupération de l\'emploi du temps.',
+            ], 500);
+        }
+    }
+
+    public function mesPaiements()
+    {
+        try {
+            $professeur = Auth::user();
+
+            if (! $professeur instanceof Professeur) {
+                return response()->json(['error' => 'Non autorisé'], 403);
+            }
+
+            // Récupérer les paiements générés par la comptabilité
+            $paiements = \App\Models\PaiementProfesseur::where('professeur_id', $professeur->id)
+                ->orderBy('annee', 'desc')
+                ->orderBy('mois', 'desc')
+                ->get();
+
+            // Calculer les heures non payées du mois en cours
+            $moisActuel = date('n');
+            $anneeActuelle = date('Y');
+
+            $heuresEffectuees = \App\Models\CahierTexte::where('professeur_id', $professeur->id)
+                ->whereMonth('date_cours', $moisActuel)
+                ->whereYear('date_cours', $anneeActuelle)
+                ->whereNull('paiement_id') // S'assurer qu'elles n'ont pas encore été rattachées à un paiement
+                ->get();
+
+            $totalHeuresVol = 0;
+            $montantEstime = 0;
+            
+            $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
+            $tauxConfigures = \App\Models\TauxHoraire::where('professeur_id', $professeur->id)->get();
+
+            foreach($heuresParClasse as $classeId => $coursList) {
+                $heures = $coursList->sum('duree_cours');
+                $totalHeuresVol += $heures;
+
+                $tauxSpecifique = $tauxConfigures->firstWhere('classe_id', $classeId);
+                $tauxGlobal = $tauxConfigures->firstWhere('classe_id', null);
+                $tauxApplique = $tauxSpecifique ? $tauxSpecifique->taux_horaire : ($tauxGlobal ? $tauxGlobal->taux_horaire : 0);
+                
+                $montantEstime += ($heures * $tauxApplique);
+            }
+
+            // Ajouter les primes fixes à l'estimation
+            foreach($tauxConfigures as $tc) {
+                $montantEstime += $tc->prime_mensuelle;
+            }
+
+            return response()->json([
+                'success' => true,
+                'paiements' => $paiements,
+                'heures_non_payees' => [
+                    'total_heures' => $totalHeuresVol,
+                    'montant_estime' => $montantEstime
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Erreur mesPaiements: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des paiements.',
+            ], 500);
+        }
     }
 
     public function matieresParClasse($classeId)

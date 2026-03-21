@@ -16,6 +16,7 @@ import Bulletins from './pages/Secretariat/Bulletins';
 import Professeurs from './pages/Secretariat/Professeurs';
 import Classes from './pages/Secretariat/Classes';
 import Communiques from './pages/Secretariat/Communiques';
+import SecretariatEvents from './pages/Secretariat/Events';
 
 // Censeur Pages
 import CenseurDashboard from './pages/Censeur/Dashboard';
@@ -30,7 +31,6 @@ import CahiersTexte from './pages/Censeur/CahiersTexte';
 import SurveillantDashboard from './pages/Surveillant/Dashboard';
 import Presence from './pages/Surveillant/Presence';
 import Discipline from './pages/Surveillant/Discipline';
-import SurveillantEvents from './pages/Surveillant/Events';
 
 // Directeur Pages
 import DirecteurDashboard from './pages/Directeur/Dashboard';
@@ -39,11 +39,17 @@ import Rapports from './pages/Directeur/Rapports';
 
 // Comptabilite Pages
 import ComptabiliteDashboard from './pages/Comptabilite/Dashboard';
-import Paiements from './pages/Comptabilite/Paiements';
 import Depenses from './pages/Comptabilite/Depenses';
 import Inventaire from './pages/Comptabilite/Inventaire';
-import Ventes from './pages/Comptabilite/Ventes';
+import PaieConfig from './pages/Comptabilite/Paie/PaieConfig'; // Payroll settings
+import GenererPaie from './pages/Comptabilite/Paie/GenererPaie'; // Payroll generation
+import Tranches from './pages/Comptabilite/Tranches'; // School fee tranches
 import Settings from './pages/Directeur/Settings'; // Directeur Settings
+
+// Caisse Pages
+import CaisseDashboard from './pages/Caisse/Dashboard';
+import CaissePaiements from './pages/Caisse/Paiements';
+import CaisseVentes from './pages/Caisse/Ventes';
 
 import { logout, getUser } from './services/auth';
 import {
@@ -151,6 +157,7 @@ const DashboardLayout = ({ children }) => {
         { icon: School, label: 'Professeurs', path: '/secretariat/professeurs' },
         { icon: BookOpen, label: 'Classes & Matières', path: '/secretariat/classes' },
         { icon: Megaphone, label: 'Communiqués', path: '/secretariat/communiques' },
+        { icon: Calendar, label: 'Événements', path: '/secretariat/events' },
     ];
 
     const censeurItems = [
@@ -167,7 +174,6 @@ const DashboardLayout = ({ children }) => {
         { icon: LayoutDashboard, label: 'Vue d\'ensemble', path: '/surveillant/dashboard' },
         { icon: ClipboardList, label: 'Présences', path: '/surveillant/presences' },
         { icon: Shield, label: 'Discipline', path: '/surveillant/discipline' },
-        { icon: Calendar, label: 'Événements', path: '/surveillant/events' },
     ];
 
     const directeurItems = [
@@ -179,10 +185,17 @@ const DashboardLayout = ({ children }) => {
 
     const comptabiliteItems = [
         { icon: LayoutDashboard, label: 'Vue d\'ensemble', path: '/comptabilite/dashboard' },
-        { icon: Receipt, label: 'Scolarités', path: '/comptabilite/paiements' },
+        { icon: Calendar, label: 'Délais Scolarité', path: '/comptabilite/tranches' },
         { icon: TrendingDown, label: 'Dépenses', path: '/comptabilite/depenses' },
+        { icon: Calculator, label: 'Générer Paies', path: '/comptabilite/generer-paie' },
+        { icon: SettingsIcon, label: 'Config. Paie', path: '/comptabilite/paie-config' },
         { icon: Box, label: 'Inventaire', path: '/comptabilite/inventaire' },
-        { icon: ShoppingBag, label: 'Ventes', path: '/comptabilite/ventes' },
+    ];
+
+    const caisseItems = [
+        { icon: LayoutDashboard, label: 'Vue d\'ensemble', path: '/caisse/dashboard' },
+        { icon: Receipt, label: 'Scolarités', path: '/caisse/paiements' },
+        { icon: ShoppingBag, label: 'Ventes', path: '/caisse/ventes' },
     ];
 
     // ... (Admin items and renderSubMenu remain same)
@@ -219,6 +232,8 @@ const DashboardLayout = ({ children }) => {
 
                     {is('comptable') && renderSubMenu("Comptabilité", "comptabilite", comptabiliteItems, "border-purple-800", "bg-purple-600/20 text-purple-400")}
 
+                    {is('caisse') && renderSubMenu("Caisse / Entrées", "caisse", caisseItems, "border-indigo-800", "bg-indigo-600/20 text-indigo-400")}
+
                 </nav>
 
                 <div className="p-4 border-t border-slate-800 mt-auto sticky bottom-0 bg-slate-900">
@@ -254,6 +269,7 @@ const DashboardRedirect = () => {
         case 'surveillant': return <Navigate to="/surveillant/dashboard" replace />;
         case 'secretariat': return <Navigate to="/secretariat/dashboard" replace />;
         case 'comptable': return <Navigate to="/comptabilite/dashboard" replace />;
+        case 'caisse': return <Navigate to="/caisse/dashboard" replace />;
         default: return <Navigate to="/login" replace />; // Should not happen if logged in
     }
 };
@@ -279,6 +295,7 @@ function App() {
             <Route path="/secretariat/professeurs" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><Professeurs /></DashboardLayout></ProtectedRoute>} />
             <Route path="/secretariat/classes" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><Classes /></DashboardLayout></ProtectedRoute>} />
             <Route path="/secretariat/communiques" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><Communiques /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/secretariat/events" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><SecretariatEvents /></DashboardLayout></ProtectedRoute>} />
 
             {/* Censeur Routes - Strict */}
             <Route path="/censeur/dashboard" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><CenseurDashboard /></DashboardLayout></ProtectedRoute>} />
@@ -293,7 +310,6 @@ function App() {
             <Route path="/surveillant/dashboard" element={<ProtectedRoute allowedRoles={['surveillant']}><DashboardLayout><SurveillantDashboard /></DashboardLayout></ProtectedRoute>} />
             <Route path="/surveillant/presences" element={<ProtectedRoute allowedRoles={['surveillant']}><DashboardLayout><Presence /></DashboardLayout></ProtectedRoute>} />
             <Route path="/surveillant/discipline" element={<ProtectedRoute allowedRoles={['surveillant']}><DashboardLayout><Discipline /></DashboardLayout></ProtectedRoute>} />
-            <Route path="/surveillant/events" element={<ProtectedRoute allowedRoles={['surveillant']}><DashboardLayout><SurveillantEvents /></DashboardLayout></ProtectedRoute>} />
 
             {/* Directeur Routes - Strict */}
             <Route path="/directeur/dashboard" element={<ProtectedRoute allowedRoles={['directeur']}><DashboardLayout><DirecteurDashboard /></DashboardLayout></ProtectedRoute>} />
@@ -304,10 +320,17 @@ function App() {
             {/* Comptabilite Routes - Strict */}
             <Route path="/comptabilite/dashboard" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><ComptabiliteDashboard /></DashboardLayout></ProtectedRoute>} />
             <Route path="/comptabilite" element={<Navigate to="/comptabilite/dashboard" replace />} />
-            <Route path="/comptabilite/paiements" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><Paiements /></DashboardLayout></ProtectedRoute>} />
             <Route path="/comptabilite/depenses" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><Depenses /></DashboardLayout></ProtectedRoute>} />
             <Route path="/comptabilite/inventaire" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><Inventaire /></DashboardLayout></ProtectedRoute>} />
-            <Route path="/comptabilite/ventes" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><Ventes /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/comptabilite/tranches" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><Tranches /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/comptabilite/paie-config" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><PaieConfig /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/comptabilite/generer-paie" element={<ProtectedRoute allowedRoles={['comptable']}><DashboardLayout><GenererPaie /></DashboardLayout></ProtectedRoute>} />
+
+            {/* Caisse Routes - Strict */}
+            <Route path="/caisse/dashboard" element={<ProtectedRoute allowedRoles={['caisse']}><DashboardLayout><CaisseDashboard /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/caisse" element={<Navigate to="/caisse/dashboard" replace />} />
+            <Route path="/caisse/paiements" element={<ProtectedRoute allowedRoles={['caisse']}><DashboardLayout><CaissePaiements /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/caisse/ventes" element={<ProtectedRoute allowedRoles={['caisse']}><DashboardLayout><CaisseVentes /></DashboardLayout></ProtectedRoute>} />
 
             {/* Redirect unknown routes */}
             <Route path="*" element={<Navigate to="/" replace />} />

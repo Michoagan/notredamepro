@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models/classe.dart';
 import '../models/cahier_texte.dart';
+import '../models/emploi_du_temps.dart';
 import '../models/professeur.dart';
 import '../widgets/cahier_entry_card.dart';
 import '../utils/theme.dart';
@@ -21,6 +22,8 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
   Classe? _selectedClasse;
   DateTime _selectedDate = DateTime.now();
   List<CahierTexte> _recentEntries = [];
+  List<EmploiDuTemps> _monEmploiDuTemps = [];
+  List<Classe> _filteredClasses = [];
   bool _isLoading = false;
 
   // Form fields
@@ -34,24 +37,114 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
   void initState() {
     super.initState();
     _heureDebut = TimeOfDay.now();
-    _loadClasses();
-    _loadRecentEntries();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true);
+    await Future.wait([
+      _loadClasses(),
+      _loadRecentEntries(),
+      _loadEmploiDuTemps(),
+    ]);
+    setState(() => _isLoading = false);
+    _filterClassesForSelectedDate();
+  }
+
+  Future<void> _loadEmploiDuTemps() async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final emploi = await apiService.getEmploiDuTemps();
+      _monEmploiDuTemps = emploi;
+    } catch (e) {
+      print('Erreur chargement emploi du temps: $e');
+    }
+  }
+
+  String _getDayName(int num) {
+    switch (num) {
+      case 1:
+        return 'Lundi';
+      case 2:
+        return 'Mardi';
+      case 3:
+        return 'Mercredi';
+      case 4:
+        return 'Jeudi';
+      case 5:
+        return 'Vendredi';
+      case 6:
+        return 'Samedi';
+      case 7:
+        return 'Dimanche';
+      default:
+        return '';
+    }
+  }
+
+  void _filterClassesForSelectedDate() {
+    final dayName = _getDayName(_selectedDate.weekday);
+    final classesForDay = _monEmploiDuTemps
+        .where((slot) => slot.jour == dayName)
+        .map((slot) => slot.classeId)
+        .toSet()
+        .toList();
+
+    setState(() {
+      _filteredClasses =
+          _classes.where((c) => classesForDay.contains(c.id)).toList();
+
+      // Auto-select class and pre-fill if exactly one is found OR if the currently selected is invalid
+      if (_filteredClasses.isNotEmpty) {
+        if (_selectedClasse == null ||
+            !_filteredClasses.any((c) => c.id == _selectedClasse!.id)) {
+          _selectedClasse = _filteredClasses.first;
+          _autoFillTimeForClass(_selectedClasse!.id, dayName);
+        }
+      } else {
+        _selectedClasse = null;
+      }
+    });
+  }
+
+  void _autoFillTimeForClass(int classeId, String dayName) {
+    final slot = _monEmploiDuTemps.firstWhere(
+      (s) => s.classeId == classeId && s.jour == dayName,
+      orElse: () => EmploiDuTemps(
+          id: 0,
+          classeId: 0,
+          matiereId: 0,
+          professeurId: 0,
+          jour: '',
+          heureDebut: '',
+          heureFin: ''),
+    );
+
+    if (slot.id != 0 && slot.heureDebut != '' && slot.heureFin != '') {
+      try {
+        final startParts = slot.heureDebut.split(':');
+        final endParts = slot.heureFin.split(':');
+
+        final startH = int.parse(startParts[0]);
+        final endH = int.parse(endParts[0]);
+
+        setState(() {
+          _heureDebut =
+              TimeOfDay(hour: startH, minute: int.parse(startParts[1]));
+          _dureeCours = (endH - startH).abs() > 0 ? (endH - startH).abs() : 1;
+        });
+      } catch (e) {
+        print('Error parsing time: $e');
+      }
+    }
   }
 
   Future<void> _loadClasses() async {
-    setState(() => _isLoading = true);
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final classes = await apiService.getClasses();
-      setState(() {
-        _classes = classes;
-        _isLoading = false;
-        if (classes.isNotEmpty) {
-          _selectedClasse = classes.first; // Default selection
-        }
-      });
+      _classes = classes;
     } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -138,10 +231,10 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
   }
 
   void _showAddEntryModal() {
-    // Reset inputs to current moment
+    // Reset inputs to current moment (or auto-filled data)
     setState(() {
       _selectedDate = DateTime.now();
-      _heureDebut = TimeOfDay.now();
+      _filterClassesForSelectedDate(); // Auto checks classes for today
     });
 
     showModalBottomSheet(
@@ -216,8 +309,7 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Classe Selection
-                      const Text('Classe',
+                      const Text('Classe programmée aujourd\'hui',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<Classe>(
@@ -230,11 +322,20 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 16),
                         ),
-                        items: _classes
+                        items: _filteredClasses
                             .map((c) => DropdownMenuItem(
                                 value: c, child: Text(c.displayName)))
                             .toList(),
-                        onChanged: (v) => setState(() => _selectedClasse = v),
+                        onChanged: (v) {
+                          setState(() => _selectedClasse = v);
+                          if (v != null) {
+                            _autoFillTimeForClass(
+                                v.id, _getDayName(_selectedDate.weekday));
+                          }
+                        },
+                        hint: Text(_filteredClasses.isEmpty
+                            ? 'Aucun cours prévu ce jour.'
+                            : 'Sélectionnez une classe'),
                       ),
 
                       const SizedBox(height: 20),
@@ -258,8 +359,10 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
                                       firstDate: DateTime(2020),
                                       lastDate: DateTime(2030),
                                     );
-                                    if (picked != null)
+                                    if (picked != null) {
                                       setState(() => _selectedDate = picked);
+                                      _filterClassesForSelectedDate();
+                                    }
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.all(16),

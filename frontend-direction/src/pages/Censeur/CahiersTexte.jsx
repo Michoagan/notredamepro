@@ -24,7 +24,7 @@ const CahiersTexte = () => {
     const fetchClasses = async () => {
         try {
             const res = await api.get('/classes/index');
-            setClasses(res.data);
+            setClasses(Array.isArray(res.data) ? res.data : (res.data.data || res.data.classes || []));
         } catch (e) { console.error(e); }
     };
 
@@ -32,8 +32,9 @@ const CahiersTexte = () => {
         setLoading(true);
         try {
             const res = await censeurService.getCahiersTexte(filters);
-            if (res.data.success) {
-                setCahiers(res.data.data.data); // Pagination wrapper usually has data inside data
+            if (res.data?.success) {
+                const results = res.data.data;
+                setCahiers(Array.isArray(results) ? results : (results?.data || []));
             }
         } catch (error) {
             console.error(error);
@@ -88,7 +89,7 @@ const CahiersTexte = () => {
                                     <span className="font-bold text-slate-900">{entry.classe?.nom}</span>
                                     <span className="text-sm text-slate-500">|</span>
                                     <span className="text-sm font-medium text-slate-700">
-                                        Prof. {entry.professeur?.nom} {entry.professeur?.prenom}
+                                        Prof. {entry.professeur?.last_name || entry.professeur?.nom} {entry.professeur?.first_name || entry.professeur?.prenom}
                                     </span>
                                 </div>
                                 <div className="flex items-center space-x-2 text-sm text-slate-500">

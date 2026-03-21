@@ -22,4 +22,9 @@ class Evenement extends Model
         'date_debut' => 'datetime',
         'date_fin' => 'datetime',
     ];
+
+    public function classes()
+    {
+        return $this->belongsToMany(Classe::class, 'classe_evenement');
+    }
 }
