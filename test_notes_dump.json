@@ -1,0 +1,26 @@
+[
+    {
+        "id": 2,
+        "premier_interro": "12.00",
+        "deuxieme_interro": "15.00",
+        "troisieme_interro": null,
+        "quatrieme_interro": null,
+        "moyenne_interro": "13.50",
+        "premier_devoir": "16.00",
+        "deuxieme_devoir": "8.00",
+        "moyenne_trimestrielle": "12.50",
+        "coefficient": "3.0",
+        "moyenne_coefficientee": "37.50",
+        "trimestre": 1,
+        "commentaire": "Bien",
+        "eleve_id": 1,
+        "classe_id": 4,
+        "professeur_id": 4,
+        "matiere_id": 1,
+        "created_at": "2026-02-18T00:27:27.000000Z",
+        "updated_at": "2026-02-28T23:13:48.000000Z",
+        "is_validated": false,
+        "validated_at": null,
+        "validated_by": null
+    }
+]

@@ -4,7 +4,8 @@ class AppConstants {
 }
 
 class ApiConstants {
-  static const String baseUrl = 'http://localhost:8000/api';
+  // Use 10.0.2.2 for Android Emulator, localhost for iOS/Web, or your machine's IP for physical devices
+  static const String baseUrl = 'http://127.0.0.1:8000/api';
 
   // Authentication
   static const String login = '/professeur/login';

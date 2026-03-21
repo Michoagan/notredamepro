@@ -23,14 +23,14 @@ class InventaireController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'designation' => 'required|string|max:255',
             'type' => 'required|in:physique,service',
             'prix_unitaire' => 'required|numeric|min:0',
             'stock_min' => 'integer|min:0',
         ]);
 
-        $article = Article::create($request->all());
+        $article = Article::create($validated);
 
         return response()->json([
             'success' => true,
@@ -44,13 +44,13 @@ class InventaireController extends Controller
      */
     public function update(Request $request, Article $article)
     {
-        $request->validate([
+        $validated = $request->validate([
             'designation' => 'string|max:255',
             'prix_unitaire' => 'numeric|min:0',
             'stock_min' => 'integer|min:0',
         ]);
 
-        $article->update($request->all());
+        $article->update($validated);
 
         return response()->json([
             'success' => true,

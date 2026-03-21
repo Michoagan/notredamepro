@@ -23,8 +23,7 @@ class Direction extends Authenticatable implements CanResetPassword
         'email',
         'phone',
         'password',
-        'is_active',           // Assurez-vous que ces champs sont présents
-        'approved_by_admin',    // dans le $fillable
+        'salaire_base',
         'approved_at',
         'approved_by',
         'admin_notes',
@@ -118,5 +117,13 @@ class Direction extends Authenticatable implements CanResetPassword
     public function sendPasswordResetCodeNotification($code)
     {
         $this->notify(new \App\Notifications\PasswordResetCodeNotification($code));
+    }
+    
+    /**
+     * Get the user's monthly salaries.
+     */
+    public function salaires()
+    {
+        return $this->hasMany(Salaire::class, 'direction_user_id');
     }
 }

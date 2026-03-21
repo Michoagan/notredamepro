@@ -16,8 +16,9 @@ const censeurService = {
     getCahiersTexte: (filters = {}) => api.get('/censeur/cahiers-texte', { params: filters }),
 
     // Validation Notes
-    getNotesValidation: (params) => api.get('/censeur/notes/validation', { params }),
-    validateNotes: (data) => api.post('/censeur/notes/validation', data),
+    // Modification Notes
+    getNotesForModification: (params) => api.get('/notes', { params }),
+    storeNotesModification: (data) => api.post('/notes', data),
 };
 
 export default censeurService;

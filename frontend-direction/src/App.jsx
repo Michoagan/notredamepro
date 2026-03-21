@@ -17,11 +17,14 @@ import Professeurs from './pages/Secretariat/Professeurs';
 import Classes from './pages/Secretariat/Classes';
 import Communiques from './pages/Secretariat/Communiques';
 import SecretariatEvents from './pages/Secretariat/Events';
+import GestionEpreuves from './pages/Secretariat/GestionEpreuves';
+import NotesExamens from './pages/Secretariat/NotesExamens';
 
 // Censeur Pages
 import CenseurDashboard from './pages/Censeur/Dashboard';
 import GestionCours from './pages/Censeur/GestionCours';
 import ValidationNotes from './pages/Censeur/ValidationNotes';
+import ModificationNotes from './pages/Censeur/ModificationNotes';
 import SuiviPedagogique from './pages/Censeur/SuiviPedagogique';
 import Programmation from './pages/Censeur/Programmation';
 import Contacts from './pages/Censeur/Contacts';
@@ -35,6 +38,7 @@ import Discipline from './pages/Surveillant/Discipline';
 // Directeur Pages
 import DirecteurDashboard from './pages/Directeur/Dashboard';
 import Personnel from './pages/Directeur/Personnel';
+import TeacherPerformance from './pages/Directeur/TeacherPerformance';
 import Rapports from './pages/Directeur/Rapports';
 
 // Comptabilite Pages
@@ -73,7 +77,9 @@ import {
     Settings as SettingsIcon,
     UserCog,
     CheckCircle,
-    Activity
+    Activity,
+    Calculator,
+    FileStack
 } from 'lucide-react';
 
 // Protected Route Wrapper
@@ -154,6 +160,8 @@ const DashboardLayout = ({ children }) => {
         { icon: LayoutDashboard, label: 'Tableau de bord', path: '/secretariat/dashboard' },
         { icon: Users, label: 'Élèves', path: '/secretariat/eleves' },
         { icon: FileText, label: 'Bulletins', path: '/secretariat/bulletins' },
+        { icon: FileStack, label: 'Anciennes Epreuves', path: '/secretariat/epreuves' },
+        { icon: Calculator, label: "Notes d'Examens", path: '/secretariat/notes-examens' },
         { icon: School, label: 'Professeurs', path: '/secretariat/professeurs' },
         { icon: BookOpen, label: 'Classes & Matières', path: '/secretariat/classes' },
         { icon: Megaphone, label: 'Communiqués', path: '/secretariat/communiques' },
@@ -166,6 +174,7 @@ const DashboardLayout = ({ children }) => {
         { icon: BookOpen, label: 'Emploi du Temps', path: '/censeur/cours' },
         { icon: FileText, label: 'Cahiers de Texte', path: '/censeur/cahiers-texte' },
         { icon: CheckCircle, label: 'Validation Notes', path: '/censeur/validation' },
+        { icon: SettingsIcon, label: 'Modification Notes', path: '/censeur/modification-notes' },
         { icon: Activity, label: 'Suivi Pédagogique', path: '/censeur/suivi' },
         { icon: Users, label: 'Annuaire', path: '/censeur/contacts' },
     ];
@@ -296,6 +305,8 @@ function App() {
             <Route path="/secretariat/classes" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><Classes /></DashboardLayout></ProtectedRoute>} />
             <Route path="/secretariat/communiques" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><Communiques /></DashboardLayout></ProtectedRoute>} />
             <Route path="/secretariat/events" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><SecretariatEvents /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/secretariat/epreuves" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><GestionEpreuves /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/secretariat/notes-examens" element={<ProtectedRoute allowedRoles={['secretariat']}><DashboardLayout><NotesExamens /></DashboardLayout></ProtectedRoute>} />
 
             {/* Censeur Routes - Strict */}
             <Route path="/censeur/dashboard" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><CenseurDashboard /></DashboardLayout></ProtectedRoute>} />
@@ -303,6 +314,7 @@ function App() {
             <Route path="/censeur/cours" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><GestionCours /></DashboardLayout></ProtectedRoute>} />
             <Route path="/censeur/cahiers-texte" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><CahiersTexte /></DashboardLayout></ProtectedRoute>} />
             <Route path="/censeur/validation" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><ValidationNotes /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/censeur/modification-notes" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><ModificationNotes /></DashboardLayout></ProtectedRoute>} />
             <Route path="/censeur/suivi" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><SuiviPedagogique /></DashboardLayout></ProtectedRoute>} />
             <Route path="/censeur/contacts" element={<ProtectedRoute allowedRoles={['censeur']}><DashboardLayout><Contacts /></DashboardLayout></ProtectedRoute>} />
 
@@ -314,6 +326,7 @@ function App() {
             {/* Directeur Routes - Strict */}
             <Route path="/directeur/dashboard" element={<ProtectedRoute allowedRoles={['directeur']}><DashboardLayout><DirecteurDashboard /></DashboardLayout></ProtectedRoute>} />
             <Route path="/directeur/personnel" element={<ProtectedRoute allowedRoles={['directeur']}><DashboardLayout><Personnel /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/directeur/personnel/:id/performance" element={<ProtectedRoute allowedRoles={['directeur']}><DashboardLayout><TeacherPerformance /></DashboardLayout></ProtectedRoute>} />
             <Route path="/directeur/rapports" element={<ProtectedRoute allowedRoles={['directeur']}><DashboardLayout><Rapports /></DashboardLayout></ProtectedRoute>} />
             <Route path="/directeur/settings" element={<ProtectedRoute allowedRoles={['directeur']}><DashboardLayout><Settings /></DashboardLayout></ProtectedRoute>} />
 

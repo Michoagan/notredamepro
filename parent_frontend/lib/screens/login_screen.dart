@@ -1,8 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../utils/theme.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
-import 'dashboard_screen.dart';
+import 'main_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -312,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result['success'] == true) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          MaterialPageRoute(builder: (_) => const MainScreen()),
         );
       } else {
         final errorMessage =

@@ -20,6 +20,10 @@ dependencies:
   intl: any
   fl_chart: ^1.1.1
   url_launcher: ^6.1.11
+  flutter_secure_storage: ^10.0.0
+  local_auth: ^3.0.1
+  firebase_core: ^2.15.1
+  firebase_messaging: ^14.6.7
 
 dev_dependencies:
   flutter_test:

@@ -465,18 +465,45 @@ class TuteurController extends Controller
                     'trimestre' => $i,
                     'moyenne_trimestrielle' => $progression[$i - 1] ?? 0,
                     'matieres' => $notesTrims->map(function($n) {
+                        $formatNote = function($val) use ($n) {
+                            return is_null($val) ? null : ['valeur' => $val, 'is_validated' => $n->is_validated];
+                        };
                         return [
                             'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
-                            'interros' => array_filter([$n->premier_interro, $n->deuxieme_interro, $n->troisieme_interro, $n->quatrieme_interro], fn($v) => !is_null($v)),
-                            'devoirs' => array_filter([$n->premier_devoir, $n->deuxieme_devoir], fn($v) => !is_null($v)),
+                            'interros' => array_values(array_filter([
+                                $formatNote($n->premier_interro), 
+                                $formatNote($n->deuxieme_interro), 
+                                $formatNote($n->troisieme_interro), 
+                                $formatNote($n->quatrieme_interro)
+                            ])),
+                            'devoirs' => array_values(array_filter([
+                                $formatNote($n->premier_devoir), 
+                                $formatNote($n->deuxieme_devoir)
+                            ])),
                             'moyenne' => $n->moyenne_trimestrielle,
                             'appreciation' => $n->appreciation,
                             'professeur' => $n->professeur ? ($n->professeur->nom . ' ' . $n->professeur->prenom) : null,
+                            'is_validated' => $n->is_validated,
                         ];
                     })->values(),
                 ];
             }
         }
+
+        $notesExamens = \App\Models\NoteExamen::where('eleve_id', $eleve->id)
+            ->with(['matiere'])
+            ->orderBy('annee_scolaire', 'desc')
+            ->get()
+            ->groupBy('type_examen')
+            ->map(function ($group) {
+                return $group->map(function ($n) {
+                    return [
+                        'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
+                        'valeur' => $n->valeur,
+                        'annee_scolaire' => $n->annee_scolaire,
+                    ];
+                })->values();
+            });
 
         return response()->json([
             'success' => true,
@@ -485,6 +512,7 @@ class TuteurController extends Controller
             'progression' => $progression,
             'performances_matieres' => $performancesMatieres,
             'notes_par_trimestre' => $notesParTrimestre,
+            'notes_examens' => $notesExamens,
             'recent_notes' => $notes->take(10)->map(function($note) {
                 // Heuristique pour déterminer la note récente à afficher
                 $type = 'Évaluation';
@@ -502,6 +530,7 @@ class TuteurController extends Controller
                     'note' => (float)$valeur,
                     'date' => $note->updated_at->format('d M'),
                     'commentaire' => $note->commentaire,
+                    'is_validated' => $note->is_validated,
                 ];
             })->values(),
         ]);
@@ -625,37 +654,95 @@ class TuteurController extends Controller
     {
         try {
             $parent = Auth::user();
-            $eleve = $parent->eleves()->findOrFail($id);
+            $eleve = $parent->eleves()->with('classe')->findOrFail($id);
 
-            // Fetch composed sessions for the student's class or global
+            // Determine if the student is in 1er or 2nd cycle based on class name
+            $nomClasse = strtolower($eleve->classe->nom ?? '');
+            $isPremierCycle = \Illuminate\Support\Str::contains($nomClasse, ['6', '5', '4', '3', 'sixi', 'cinq', 'quatr', 'trois']);
+            $isSecondCycle = \Illuminate\Support\Str::contains($nomClasse, ['2n', '1er', 'tle', 'second', 'premi', 'term']);
+            
+            $cycle = $isPremierCycle ? '1er_cycle' : ($isSecondCycle ? '2nd_cycle' : null);
+
+            // Fetch composed sessions for the student's class, cycle, or global
             $sessions = \App\Models\SessionComposition::with(['horaires.matiere:id,nom'])
-                ->where(function ($query) use ($eleve) {
-                    $query->where('is_global', true)
+                ->where(function ($query) use ($eleve, $cycle) {
+                    $query->where('cible', 'toute_lecole')
                           ->orWhere('classe_id', $eleve->classe_id);
+                    
+                    if ($cycle) {
+                        $query->orWhere('cible', $cycle);
+                    }
                 })
                 ->whereHas('horaires', function ($query) {
                     $query->where('date_composition', '>=', now()->format('Y-m-d'));
                 })
                 ->get();
 
-            $convocations = $sessions->map(function ($session) {
-                // Filter only horaires relevant to this class if it were possible, 
-                // but if it's global, all classes do it. We assume the censeur 
-                // scheduled the exact subjects the class takes.
-                $premierExamen = $session->horaires->min('date_composition');
+            // L'Année scolaire
+            $annee = \App\Models\Contribution::getAnneeScolaireCourante();
+            
+            // Les tranches ordonnées
+            $tranches = \App\Models\TrancheScolarite::where('annee_scolaire', $annee)
+                ->orderBy('pourcentage')
+                ->get();
+            
+            // Total payé par l'élève pour la scolarité de cette année
+            $contributionScolarite = \App\Models\Contribution::where('classe_id', $eleve->classe_id)
+                ->where('annee_scolaire', $annee)
+                ->where('type', \App\Models\Contribution::TYPE_SCOLARITE)
+                ->first();
+                
+            $coutTotal = $contributionScolarite ? $contributionScolarite->montant_total : ($eleve->classe->cout_contribution ?? 50000);
+            $totalPaye = \App\Models\Paiement::where('eleve_id', $eleve->id)
+                ->where('statut', 'success')
+                ->sum('montant');
+
+            $convocations = $sessions->map(function ($session) use ($coutTotal, $totalPaye, $tranches) {
+                // Determine if locked
+                $isLocked = false;
+                $messageBlocage = null;
+
+                // Match Trimestre with Tranche Index (Trimestre 1 -> Tranche 0, Trimestre 2 -> Tranche 1...)
+                $trancheIndex = $session->trimestre - 1;
+                
+                if (isset($tranches[$trancheIndex])) {
+                    $trancheRequise = $tranches[$trancheIndex];
+                    $montantRequis = ($coutTotal * $trancheRequise->pourcentage) / 100;
+
+                    if ($totalPaye < $montantRequis) {
+                        $isLocked = true;
+                        $messageBlocage = "Pas de convocation, pas de composition ! Veuillez vous mettre à jour (Tranche {$session->trimestre} requise).";
+                    }
+                }
+
+                // If locked, hide the exact schedule
+                if ($isLocked) {
+                    $session->setRelation('horaires', collect([]));
+                }
+
+                $session->is_locked_payment = $isLocked;
+                $session->message_blocage = $messageBlocage;
+
+                $premierExamen = $isLocked ? null : $session->horaires->min('date_composition');
                 
                 // Diff in days relative to today
                 $aujourdhui = now()->startOfDay();
-                $dateExam = \Carbon\Carbon::parse($premierExamen)->startOfDay();
+                $dateExam = $premierExamen ? \Carbon\Carbon::parse($premierExamen)->startOfDay() : now()->addDays(7)->startOfDay();
                 
                 $joursRestants = $aujourdhui->diffInDays($dateExam, false); // negative if past exam
                 $isDownloadable = ($joursRestants >= 0 && $joursRestants <= 7);
 
                 return [
-                    'session' => $session,
-                    'premier_examen' => $premierExamen,
-                    'jours_restants' => $joursRestants,
+                    'id' => $session->id,
+                    'session_nom' => $session->libelle,
+                    'trimestre' => $session->trimestre,
+                    'numero_devoir' => $session->numero_devoir,
+                    'date_debut' => $premierExamen ? \Carbon\Carbon::parse($premierExamen)->format('d/m/Y') : 'À définir',
+                    'temps_restant_jours' => max(0, $joursRestants),
                     'is_downloadable' => $isDownloadable,
+                    'is_locked' => $isLocked,
+                    'message_blocage' => $messageBlocage,
+                    'session' => $session // Gardé au cas où PDF generator l'utilise
                 ];
             });
 
@@ -741,6 +828,118 @@ class TuteurController extends Controller
         }
     }
 
+    public function getExercices($id)
+    {
+        try {
+            $parent = \Illuminate\Support\Facades\Auth::user();
+            $eleve = $parent->eleves()->findOrFail($id);
+
+            $cahiers = \App\Models\CahierTexte::with(['matiere', 'professeur', 'elevesNonFaits' => function ($q) use ($eleve) {
+                $q->where('eleve_id', $eleve->id);
+            }])
+                ->where('classe_id', $eleve->classe_id)
+                ->whereNotNull('travail_a_faire')
+                ->where('travail_a_faire', '!=', '')
+                ->orderBy('date_cours', 'desc')
+                ->get();
+
+            $exercices = $cahiers->map(function ($c) {
+                return [
+                    'id' => $c->id,
+                    'date_cours' => $c->date_cours,
+                    'matiere' => $c->matiere ? $c->matiere->nom : 'Inconnue',
+                    'professeur' => $c->professeur ? $c->professeur->nom . ' ' . $c->professeur->prenom : 'Inconnu',
+                    'travail_a_faire' => $c->travail_a_faire,
+                    'is_non_fait' => $c->elevesNonFaits->isNotEmpty(),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'exercices' => $exercices
+            ]);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erreur getExercices Tuteur: '.$e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Erreur API'], 500);
+        }
+    }
+
+    public function getProfesseurs($id)
+    {
+        try {
+            $parent = \Illuminate\Support\Facades\Auth::user();
+            // Sécurité : vérifier que l'élève appartient bien au parent
+            $eleve = $parent->eleves()->findOrFail($id);
+
+            // Récupérer la classe de l'élève
+            $classe = $eleve->classe;
+
+            if (!$classe) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cet élève n\'est assigné à aucune classe.'
+                ], 404);
+            }
+
+            // Récupérer les matières de cette classe avec les professeurs associés
+            // En utilisant la relation définie dans Classe.php (professeurs/matieres)
+            // ou via la table pivot classe_matiere
+            $professeursData = DB::table('classe_matiere')
+                ->where('classe_id', $classe->id)
+                ->join('professeurs', 'classe_matiere.professeur_id', '=', 'professeurs.id')
+                ->join('matieres', 'classe_matiere.matiere_id', '=', 'matieres.id')
+                ->select(
+                    'professeurs.id as professeur_id',
+                    'professeurs.last_name',
+                    'professeurs.first_name',
+                    'professeurs.email',
+                    'professeurs.telephone',
+                    'professeurs.genre', // Utile pour l'avatar par défaut
+                    'professeurs.photo',
+                    'matieres.id as matiere_id',
+                    'matieres.nom as matiere_nom'
+                )
+                ->orderBy('matieres.nom', 'desc')
+                ->get();
+
+            // Grouper par professeur (au cas où un prof enseigne plusieurs matières)
+            $professeursList = [];
+            foreach ($professeursData as $data) {
+                $profId = $data->professeur_id;
+                
+                if (!isset($professeursList[$profId])) {
+                    $professeursList[$profId] = [
+                        'id' => $profId,
+                        'nom' => $data->last_name,
+                        'prenom' => $data->first_name,
+                        'email' => $data->email,
+                        'telephone' => $data->telephone,
+                        'genre' => $data->genre,
+                        'photo' => $data->photo,
+                        'matieres' => []
+                    ];
+                }
+                
+                // On ajoute la matière enseignée
+                if (!in_array($data->matiere_nom, $professeursList[$profId]['matieres'])) {
+                    $professeursList[$profId]['matieres'][] = $data->matiere_nom;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'professeurs' => array_values($professeursList)
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erreur getProfesseurs TuteurController: '.$e->getMessage());
+            return response()->json([
+                'success' => false, 
+                'message' => 'Une erreur est survenue lors de la récupération des contacts profs.'
+            ], 500);
+        }
+    }
+
     public function getNotifications(Request $request)
     {
         $parent = Auth::user();
@@ -776,5 +975,44 @@ class TuteurController extends Controller
             'success' => true,
             'unread_count' => $parent->unreadNotifications->count(),
         ]);
+    }
+
+    public function updateRepetiteur(Request $request, $id)
+    {
+        $request->validate([
+            'repetiteur_whatsapp' => 'nullable|string',
+        ]);
+
+        $parent = Auth::user();
+        $eleve = $parent->eleves()->findOrFail($id);
+
+        $eleve->repetiteur_whatsapp = $request->repetiteur_whatsapp;
+        $eleve->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Numéro du répétiteur mis à jour avec succès.',
+            'eleve' => $eleve
+        ]);
+    }
+
+    public function updateFcmToken(Request $request)
+    {
+        $request->validate([
+            'fcm_token' => 'required|string',
+        ]);
+
+        $parent = Auth::user();
+        if ($parent) {
+            $parent->fcm_token = $request->fcm_token;
+            $parent->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'FCM Token mis à jour avec succès.',
+            ]);
+        }
+
+        return response()->json(['success' => false], 401);
     }
 }

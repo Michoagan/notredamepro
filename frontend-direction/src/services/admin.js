@@ -12,6 +12,16 @@ export const getPendingAccounts = async () => {
     return response.data;
 };
 
+export const getSettings = async () => {
+    const response = await api.get('/settings');
+    return response.data;
+};
+
+export const updateSetting = async (data) => {
+    const response = await api.post('/direction/settings', data);
+    return response.data;
+};
+
 export const getAllAccounts = async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
     const response = await api.get(`${ADMIN_API}/all-accounts?${params}`);

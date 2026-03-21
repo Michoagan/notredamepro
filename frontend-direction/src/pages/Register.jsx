@@ -139,6 +139,7 @@ export default function Register() {
                             <option value="surveillant">Surveillant</option>
                             <option value="secretariat">Secrétaire</option>
                             <option value="comptable">Comptable</option>
+                            <option value="caisse">Caissier</option>
                         </select>
                     </div>
 

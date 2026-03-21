@@ -172,7 +172,11 @@ public function scopeOrderByNiveau($query)
     {
         return $this->belongsToMany(Evenement::class, 'classe_evenement');
     }
-    
+
+    public function notesExamens()
+    {
+        return $this->hasMany(NoteExamen::class);
+    }
        public function contributions(): HasMany
     {
         return $this->hasMany(Contribution::class);

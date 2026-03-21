@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { getClasses, getEleves, downloadBulletin } from '../../services/secretariat';
+import React, { useState, useEffect, useRef } from 'react';
+import { getClasses, getEleves, fetchBulletinData } from '../../services/secretariat';
 import settingsService from '../../services/settings';
 import { FileText, Download, Printer, Search, School, User, Calendar } from 'lucide-react';
 import axios from 'axios';
+import { useReactToPrint } from 'react-to-print';
+import BulletinTemplate from './BulletinTemplate';
 
 const Bulletins = () => {
     const [classes, setClasses] = useState([]);
@@ -12,6 +14,14 @@ const Bulletins = () => {
     const [trimestre, setTrimestre] = useState('1');
     const [loading, setLoading] = useState(false);
     const [downloading, setDownloading] = useState(false);
+    const [bulletinData, setBulletinData] = useState(null);
+    const [anneeScolaire, setAnneeScolaire] = useState('2025-2026');
+    const componentRef = useRef();
+
+    const handlePrint = useReactToPrint({
+        content: () => componentRef.current,
+        documentTitle: `Bulletin_T${trimestre}`,
+    });
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -82,28 +92,24 @@ const Bulletins = () => {
     };
 
     const handleDownload = async () => {
-        if (!selectedStudent || !trimestre) return;
+        if (!selectedStudent || !trimestre || !selectedClasse) return;
 
         setDownloading(true);
         try {
-            const blob = await downloadBulletin(selectedStudent, trimestre);
+            const data = await fetchBulletinData(selectedStudent, trimestre, selectedClasse);
 
-            // Create blob link to download
-            const url = window.URL.createObjectURL(new Blob([blob]));
-            const link = document.createElement('a');
-            link.href = url;
-
-            // Find student name for filename
-            const student = students.find(s => s.id == selectedStudent);
-            const studentName = student ? `${student.nom}_${student.prenom}` : 'bulletin';
-
-            link.setAttribute('download', `Bulletin_${studentName}_T${trimestre}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.parentNode.removeChild(link);
+            if (data.success && data.bulletinData) {
+                setBulletinData(data.bulletinData);
+                // Let the hidden template re-render before issuing print command
+                setTimeout(() => {
+                    handlePrint();
+                }, 300);
+            } else {
+                alert("Impossible de trouver les notes ou le bulletin.");
+            }
         } catch (error) {
             console.error("Erreur téléchargement bulletin", error);
-            alert("Impossible de générer le bulletin. Vérifiez que les notes sont saisies.");
+            alert("Erreur réseau. Une erreur est survenue lors de la récupération.");
         } finally {
             setDownloading(false);
         }
@@ -219,6 +225,16 @@ const Bulletins = () => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Hidden Printable Component */}
+            <div className="hidden">
+                <BulletinTemplate
+                    ref={componentRef}
+                    data={bulletinData}
+                    trimestre={trimestre}
+                    anneeScolaire={anneeScolaire}
+                />
             </div>
         </div>
     );

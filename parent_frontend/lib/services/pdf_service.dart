@@ -1,13 +1,19 @@
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class PdfService {
   static Future<Uint8List> generateConvocationPdf({
     required Map<String, dynamic> eleve,
     required Map<String, dynamic> session,
   }) async {
-    final pdf = pw.Document();
+    final font = await PdfGoogleFonts.openSansRegular();
+    final fontBold = await PdfGoogleFonts.openSansBold();
+
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+    );
 
     final String fullName = '${eleve['prenom'] ?? ''} ${eleve['nom'] ?? ''}';
     final String libelle = session['session_nom'] ?? 'Session de Composition';

@@ -44,3 +44,9 @@ export const getProfesseurDetails = async (id) => {
     const response = await api.get(`/professeurs/${id}`); // Check routing for details
     return response.data;
 };
+
+// Analyse des performances du professeur (Assiduité, Programme, Impact)
+export const getTeacherPerformance = async (id) => {
+    const response = await api.get(`/professeurs/${id}/performance`);
+    return response.data;
+};

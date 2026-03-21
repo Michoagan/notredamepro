@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { UserPlus, Search, MoreVertical, Mail, Phone, X, Check } from 'lucide-react';
 import { getAllAccounts, createUser, getMatieres } from '../../services/admin';
 import api from '../../services/api';
@@ -274,10 +275,13 @@ export default function Personnel() {
                                             {p.is_active ? 'Actif' : 'Inactif'}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-slate-400 hover:text-slate-600">
-                                            <MoreVertical className="w-4 h-4" />
-                                        </button>
+                                    <td className="px-6 py-4 text-right flex justify-end space-x-2">
+                                        <Link
+                                            to={`/directeur/personnel/${p.id}/performance`}
+                                            className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition text-xs font-medium"
+                                        >
+                                            Performances
+                                        </Link>
                                     </td>
                                 </tr>
                             ))
@@ -287,4 +291,4 @@ export default function Personnel() {
             </div>
         </div>
     );
-}
+};

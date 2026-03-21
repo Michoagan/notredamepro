@@ -101,7 +101,6 @@ class CenseurController extends Controller
             ->where('classe_id', $classeId)
             ->where('matiere_id', $matiereId)
             ->where('trimestre', $trimestre)
-            ->orderBy(DB::raw('eleves.nom')) // Requires join usually, but simpler: get and sort collection
             ->get();
             
         // Assuming Note belongsTo Eleve

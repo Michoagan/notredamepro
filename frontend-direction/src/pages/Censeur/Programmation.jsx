@@ -19,7 +19,7 @@ const Programmation = () => {
     const [compLibelle, setCompLibelle] = useState('Composition du Premier Trimestre');
     const [compTrimestre, setCompTrimestre] = useState(1);
     const [compNumeroDevoir, setCompNumeroDevoir] = useState(1);
-    const [compIsGlobal, setCompIsGlobal] = useState(true);
+    const [compCible, setCompCible] = useState('toute_lecole');
     const [compClasseId, setCompClasseId] = useState('');
     const [compHoraires, setCompHoraires] = useState([]);
     const [sessions, setSessions] = useState([]); // List of past/existing sessions
@@ -47,7 +47,7 @@ const Programmation = () => {
             setClasses(Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data.data || classesRes.data.classes || []));
             setMatieres(Array.isArray(matieresRes.data) ? matieresRes.data : (matieresRes.data.data || matieresRes.data.matieres || []));
             setProfesseurs(Array.isArray(profsRes.data) ? profsRes.data : (profsRes.data.professeurs || profsRes.data.data || []));
-            setSessions(sessionsRes.data || []);
+            setSessions(Array.isArray(sessionsRes.data) ? sessionsRes.data : (sessionsRes.data.data || sessionsRes.data.sessions || []));
         } catch (error) {
             console.error("Erreur chargement données", error);
         }
@@ -167,8 +167,8 @@ const Programmation = () => {
     };
 
     const handleSaveComposition = async () => {
-        if (!compIsGlobal && !compClasseId) {
-            alert('Veuillez sélectionner une classe ou cocher "Pour toute l\'école".');
+        if (compCible === 'classe' && !compClasseId) {
+            alert('Veuillez sélectionner une classe.');
             return;
         }
         if (compHoraires.length === 0) {
@@ -181,8 +181,8 @@ const Programmation = () => {
                 libelle: compLibelle,
                 trimestre: compTrimestre,
                 numero_devoir: compNumeroDevoir,
-                is_global: compIsGlobal,
-                classe_id: !compIsGlobal ? compClasseId : null,
+                cible: compCible,
+                classe_id: compCible === 'classe' ? compClasseId : null,
                 horaires: compHoraires
             };
 
@@ -442,17 +442,19 @@ const Programmation = () => {
                                 </div>
                             </div>
                             <div className="col-span-1 md:col-span-2">
-                                <label className="flex items-center space-x-2 text-sm font-medium text-slate-700 mb-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={compIsGlobal}
-                                        onChange={(e) => setCompIsGlobal(e.target.checked)}
-                                        className="rounded text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span>Programmer pour toute l'école</span>
-                                </label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Cible de la programmation</label>
+                                <select
+                                    value={compCible}
+                                    onChange={(e) => setCompCible(e.target.value)}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="toute_lecole">Toute l'école</option>
+                                    <option value="1er_cycle">1er Cycle (6ème à 3ème)</option>
+                                    <option value="2nd_cycle">2nd Cycle (2nde à Terminale)</option>
+                                    <option value="classe">Classe Spécifique</option>
+                                </select>
                             </div>
-                            {!compIsGlobal && (
+                            {compCible === 'classe' && (
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Classe ciblée</label>
                                     <select
@@ -569,7 +571,10 @@ const Programmation = () => {
                                         <h4 className="font-bold text-slate-800 pr-6">{s.libelle}</h4>
                                         <div className="text-sm text-slate-500 mt-1 mb-3">
                                             Trimestre {s.trimestre} - Devoir n°{s.numero_devoir}<br />
-                                            {s.is_global ? <span className="text-blue-600 font-medium">Toute l'école</span> : <span>Classe ID: {s.classe_id}</span>}
+                                            {s.cible === 'toute_lecole' && <span className="text-blue-600 font-medium">Toute l'école</span>}
+                                            {s.cible === '1er_cycle' && <span className="text-indigo-600 font-medium">1er Cycle</span>}
+                                            {s.cible === '2nd_cycle' && <span className="text-purple-600 font-medium">2nd Cycle</span>}
+                                            {s.cible === 'classe' && <span>Classe: {s.classe?.nom || s.classe_id}</span>}
                                         </div>
                                         <hr className="my-2 border-slate-100" />
                                         <p className="text-xs font-semibold text-slate-700 mb-2">Examen(s) ({s.horaires?.length || 0}):</p>

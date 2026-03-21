@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
 import '../models/professeur.dart';
 import '../models/dashboard_stats.dart';
@@ -24,21 +24,20 @@ class ApiService {
 
   Future<String?> getToken() async {
     if (_token != null) return _token;
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString(AppConstants.tokenKey);
+    _token =
+        await const FlutterSecureStorage().read(key: AppConstants.tokenKey);
     return _token;
   }
 
   Future<void> saveToken(String token) async {
     _token = token;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.tokenKey, token);
+    await const FlutterSecureStorage()
+        .write(key: AppConstants.tokenKey, value: token);
   }
 
   Future<void> removeToken() async {
     _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(AppConstants.tokenKey);
+    await const FlutterSecureStorage().delete(key: AppConstants.tokenKey);
   }
 
   Future<Map<String, String>> _getHeaders() async {
@@ -110,6 +109,21 @@ class ApiService {
     }
   }
 
+  Future<bool> sendFcmToken(String token) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/professeur/fcm-token'),
+        headers: headers,
+        body: json.encode({'fcm_token': token}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<bool> logout() async {
     try {
       final headers = await _getHeaders();
@@ -125,6 +139,29 @@ class ApiService {
       return false;
     } catch (e) {
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> signalerExerciceNonFait(int eleveId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/professeur/exercice-non-fait'),
+        headers: headers,
+        body: json.encode({
+          'eleve_id': eleveId,
+        }),
+      );
+
+      final responseData = json.decode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': responseData['message']};
+      } else {
+        return {'success': false, 'message': responseData['message'] ?? 'Erreur inattendue'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Erreur de connexion : $e'};
     }
   }
 
@@ -614,6 +651,7 @@ class ApiService {
     required int dureeCours,
     required String heureDebut,
     required String notionCours,
+    String? travailAFaire,
   }) async {
     try {
       final headers = await _getHeaders();
@@ -627,6 +665,7 @@ class ApiService {
           'duree_cours': dureeCours,
           'heure_debut': heureDebut,
           'notion_cours': notionCours,
+          'travail_a_faire': travailAFaire ?? '',
         }),
       );
 
@@ -681,6 +720,59 @@ class ApiService {
         'success': false,
         'message': 'Erreur de connexion: $e',
       };
+    }
+  }
+
+  Future<List<CahierTexte>> getExercices() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/exercices'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return List<CahierTexte>.from(
+              data['exercices'].map((x) => CahierTexte.fromJson(x)));
+        } else {
+          throw Exception(data['message'] ?? 'Erreur de chargement des exercices');
+        }
+      } else {
+        throw Exception('Erreur de chargement des exercices (${response.statusCode})');
+      }
+    } catch (e) {
+      throw Exception('Erreur de connexion: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> markExerciceNonFait(int exerciceId, List<int> elevesIds) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/exercices/$exerciceId/non-faits'),
+        headers: headers,
+        body: json.encode({
+          'eleves_ids': elevesIds,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'success': data['success'] ?? true,
+          'message': data['message'] ?? 'Statut mis à jour',
+        };
+      } else {
+        final errorData = json.decode(response.body);
+        return {
+          'success': false,
+          'message': errorData['message'] ?? 'Erreur de mise à jour',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Erreur de connexion: $e'};
     }
   }
 

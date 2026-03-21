@@ -6,8 +6,9 @@ import '../utils/theme.dart';
 class CahierEntryCard extends StatelessWidget {
   final CahierTexte entry;
   final String? classeNom;
+  final VoidCallback? onMarquerNonFait;
 
-  const CahierEntryCard({super.key, required this.entry, this.classeNom});
+  const CahierEntryCard({super.key, required this.entry, this.classeNom, this.onMarquerNonFait});
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +119,44 @@ class CahierEntryCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (entry.travailAFaire.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Divider(height: 1),
+              ),
+              const Text(
+                'Travail à faire:',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                entry.travailAFaire,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: AppTheme.primary,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (onMarquerNonFait != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: onMarquerNonFait,
+                    icon: const Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                    label: const Text('Marquer non fait', style: TextStyle(color: Colors.orange)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.orange),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+            ],
           ],
         ),
       ),

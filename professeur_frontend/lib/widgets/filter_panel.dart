@@ -85,16 +85,23 @@ class _FilterPanelState extends State<FilterPanel> {
                 // Classe
                 Expanded(
                   child: DropdownButtonFormField<Classe>(
+                    isExpanded: true,
                     initialValue: _selectedClasse,
                     items: [
                       const DropdownMenuItem(
                         value: null,
-                        child: Text('Toutes les classes'),
+                        child: Text(
+                          'Toutes les classes',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       ...widget.classes.map((classe) {
                         return DropdownMenuItem(
                           value: classe,
-                          child: Text(classe.displayName),
+                          child: Text(
+                            classe.displayName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                     ],
@@ -117,24 +124,43 @@ class _FilterPanelState extends State<FilterPanel> {
                 // Type de note
                 Expanded(
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: _selectedType,
                     items: const [
                       DropdownMenuItem(
                         value: 'all',
-                        child: Text('Tous les types'),
+                        child: Text(
+                          'Tous les types',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'interro',
-                        child: Text('Interrogations'),
+                        child: Text(
+                          'Interrogations',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      DropdownMenuItem(value: 'devoir', child: Text('Devoirs')),
+                      DropdownMenuItem(
+                        value: 'devoir',
+                        child: Text(
+                          'Devoirs',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       DropdownMenuItem(
                         value: 'trimestrielle',
-                        child: Text('Moyennes trim.'),
+                        child: Text(
+                          'Moyennes trim.',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'generale',
-                        child: Text('Moyennes gén.'),
+                        child: Text(
+                          'Moyennes gén.',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                     onChanged: (value) {
@@ -157,14 +183,23 @@ class _FilterPanelState extends State<FilterPanel> {
 
             // Élève
             DropdownButtonFormField<Eleve>(
+              isExpanded: true,
               initialValue: _selectedEleve,
               items: [
                 const DropdownMenuItem(
-                    value: null, child: Text('Tous les élèves')),
+                  value: null,
+                  child: Text(
+                    'Tous les élèves',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 ...widget.eleves.map((eleve) {
                   return DropdownMenuItem(
                     value: eleve,
-                    child: Text('${eleve.prenom} ${eleve.nom}'),
+                    child: Text(
+                      '${eleve.prenom} ${eleve.nom}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   );
                 }).toList(),
               ],
@@ -207,31 +242,36 @@ class _FilterPanelState extends State<FilterPanel> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      // On ne réinitialise pas la classe si possible pour éviter de perdre le contexte
-                      // Mais on remet les autres filtres à défaut
-                      _selectedType = 'all';
-                      _selectedEleve = null;
-                    });
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        // On ne réinitialise pas la classe si possible pour éviter de perdre le contexte
+                        // Mais on remet les autres filtres à défaut
+                        _selectedType = 'all';
+                        _selectedEleve = null;
+                      });
 
-                    // Si on a une classe sélectionnée par défaut (via le parent), on la garde
-                    // Sinon on remet tout à null. Ici on force un reset complet pour être sûr
+                      // Si on a une classe sélectionnée par défaut (via le parent), on la garde
+                      // Sinon on remet tout à null. Ici on force un reset complet pour être sûr
 
-                    // NOTE: Pour une meilleure UX, on pourrait garder la classe actuelle.
-                    // Pour l'instant on garde le comportement d'origine mais avec une meilleure UI.
-                    widget.onApplyFilters(_selectedClasse, 'all', null);
-                  },
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Réinitialiser'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey.shade700,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 16, horizontal: 20),
-                    side: BorderSide(color: Colors.grey.shade300),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      // NOTE: Pour une meilleure UX, on pourrait garder la classe actuelle.
+                      // Pour l'instant on garde le comportement d'origine mais avec une meilleure UI.
+                      widget.onApplyFilters(_selectedClasse, 'all', null);
+                    },
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text(
+                      'Réinitialiser',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.grey.shade700,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 16, horizontal: 8),
+                      side: BorderSide(color: Colors.grey.shade300),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                 ),
               ],

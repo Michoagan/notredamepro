@@ -10,6 +10,9 @@ class CahierTexte {
   final String heureDebut;
   final String notionCours;
   final Classe? classe;
+  final String travailAFaire;
+  final bool isNonFait;
+  final List<int> elevesNonFaitsIds;
   final Professeur? professeur;
 
   CahierTexte({
@@ -20,6 +23,9 @@ class CahierTexte {
     required this.dureeCours,
     required this.heureDebut,
     required this.notionCours,
+    this.travailAFaire = '',
+    this.isNonFait = false,
+    this.elevesNonFaitsIds = const [],
     this.classe,
     this.professeur,
   });
@@ -35,6 +41,11 @@ class CahierTexte {
       dureeCours: json['duree_cours'] ?? 1,
       heureDebut: json['heure_debut'] ?? '',
       notionCours: json['notion_cours'] ?? '',
+      travailAFaire: json['travail_a_faire'] ?? '',
+      isNonFait: json['is_non_fait'] ?? false,
+      elevesNonFaitsIds: json['eleves_non_faits'] != null
+          ? (json['eleves_non_faits'] as List).map<int>((e) => e['id'] as int).toList()
+          : [],
       classe: json['classe'] != null ? Classe.fromJson(json['classe']) : null,
       professeur: json['professeur'] != null ? Professeur.fromJson(json['professeur']) : null,
     );

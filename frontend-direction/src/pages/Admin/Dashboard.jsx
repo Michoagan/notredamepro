@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Activity, Server } from 'lucide-react';
-import { getDashboardStats } from '../../services/admin';
+import { Users, Shield, Activity, Server, CreditCard, ToggleLeft, ToggleRight, Loader } from 'lucide-react';
+import { getDashboardStats, getSettings, updateSetting } from '../../services/admin';
 
 const StatCard = ({ title, value, icon: Icon, color }) => (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
@@ -17,31 +17,79 @@ const StatCard = ({ title, value, icon: Icon, color }) => (
 const AdminDashboard = () => {
     const [stats, setStats] = useState({
         usersCount: 0,
-        activeSessions: 0, // Not provided by API yet
+        activeSessions: 0,
         systemStatus: 'Optimal'
     });
+    const [settings, setSettings] = useState({
+        paiement_en_ligne_actif: 'true'
+    });
     const [loading, setLoading] = useState(true);
+    const [togglingPayment, setTogglingPayment] = useState(false);
 
     useEffect(() => {
-        const fetchStats = async () => {
+        const fetchData = async () => {
             try {
-                const data = await getDashboardStats();
-                if (data.success) {
+                const [statsData, settingsData] = await Promise.all([
+                    getDashboardStats(),
+                    getSettings()
+                ]);
+
+                if (statsData.success) {
                     setStats({
-                        usersCount: data.stats.total,
-                        activeSessions: data.stats.active, // Using active users as a proxy for now
+                        usersCount: statsData.stats.total,
+                        activeSessions: statsData.stats.active,
                         systemStatus: 'En ligne'
                     });
                 }
+
+                if (settingsData) {
+                    setSettings({
+                        paiement_en_ligne_actif: settingsData.paiement_en_ligne_actif || 'true'
+                    });
+                }
             } catch (error) {
-                console.error("Error fetching admin stats:", error);
+                console.error("Error fetching admin data:", error);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchStats();
+        fetchData();
     }, []);
+
+    const handleTogglePayment = async () => {
+        setTogglingPayment(true);
+        try {
+            const isCurrentlyActive = settings.paiement_en_ligne_actif === 'true';
+            const newValue = isCurrentlyActive ? 'false' : 'true';
+
+            const response = await updateSetting({
+                paiement_en_ligne_actif: newValue
+            });
+
+            if (response.success) {
+                setSettings({
+                    ...settings,
+                    paiement_en_ligne_actif: newValue
+                });
+            }
+        } catch (error) {
+            console.error("Error updating padding setting:", error);
+            alert("Erreur lors de la modification des paramètres.");
+        } finally {
+            setTogglingPayment(false);
+        }
+    };
+
+    const isPaymentActive = settings.paiement_en_ligne_actif === 'true';
+
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <Loader className="w-8 h-8 animate-spin text-blue-600" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8">
@@ -72,6 +120,47 @@ const AdminDashboard = () => {
                     icon={Server}
                     color="bg-emerald-600"
                 />
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center space-x-3">
+                        <CreditCard className="w-6 h-6 text-indigo-600" />
+                        <h2 className="text-lg font-bold text-slate-900">Configuration des Paiements</h2>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-slate-50">
+                    <div>
+                        <h3 className="font-semibold text-slate-800">Paiements en ligne</h3>
+                        <p className="text-sm text-slate-500 mt-1">
+                            Autoriser ou bloquer les paiements mobiles et cartes bancaires via l'application Parent.
+                            {isPaymentActive ? (
+                                <span className="ml-2 text-green-600 font-medium">Actuellement: Activé</span>
+                            ) : (
+                                <span className="ml-2 text-red-600 font-medium">Actuellement: Désactivé</span>
+                            )}
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={handleTogglePayment}
+                        disabled={togglingPayment}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${isPaymentActive
+                                ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                                : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                            } ${togglingPayment ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {togglingPayment ? (
+                            <Loader className="w-5 h-5 animate-spin" />
+                        ) : isPaymentActive ? (
+                            <ToggleRight className="w-5 h-5 text-red-600" />
+                        ) : (
+                            <ToggleLeft className="w-5 h-5 text-green-600" />
+                        )}
+                        <span>{isPaymentActive ? 'Désactiver' : 'Activer'}</span>
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

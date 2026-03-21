@@ -10,12 +10,8 @@ class SessionComposition extends Model
         'libelle',
         'trimestre',
         'numero_devoir',
-        'is_global',
+        'cible',
         'classe_id',
-    ];
-
-    protected $casts = [
-        'is_global' => 'boolean',
     ];
 
     public function classe()

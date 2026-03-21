@@ -194,6 +194,13 @@
     </div>
 
     <div class="signature-area">
+        @if(isset($qrCodeImage))
+        <div style="float: left; width: 100px; text-align: center;">
+            <img src="data:image/png;base64,{{ $qrCodeImage }}" alt="QR Code" style="width: 100px; height: 100px;">
+            <div style="font-size: 8px; color: #777; margin-top: 5px;">Document Authentifié</div>
+        </div>
+        @endif
+        
         <div class="signature-box">
             <div class="signature-line"></div>
             <strong>La Caisse / Direction</strong>

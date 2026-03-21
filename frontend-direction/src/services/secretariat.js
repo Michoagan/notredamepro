@@ -113,6 +113,11 @@ export const getBulletins = async () => {
     return response.data;
 };
 
+export const fetchBulletinData = async (eleveId, trimestre, classeId) => {
+    const response = await api.get(`/bulletins?eleve_id=${eleveId}&trimestre=${trimestre}&classe_id=${classeId}`);
+    return response.data;
+};
+
 export const downloadBulletin = async (eleveId, trimestre) => {
     const response = await api.get(`/secretaire/bulletin/eleve/${eleveId}/${trimestre}`, {
         responseType: 'blob', // Important for PDF

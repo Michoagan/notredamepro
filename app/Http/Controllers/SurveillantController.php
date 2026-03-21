@@ -123,6 +123,18 @@ class SurveillantController extends Controller
             'statut' => 'enregistrée'
         ]);
 
+        // --- ENVOI NOTIFICATION PUSH AUX PARENTS ---
+        try {
+            $plainte->load(['eleve', 'eleve.tuteurs']);
+            $tuteurs = $plainte->eleve->tuteurs;
+
+            if ($tuteurs && $tuteurs->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\NouvellePlainteNotification($plainte));
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Erreur Push Notification Nouvelle Plainte : ' . $e->getMessage());
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Plainte enregistrée avec succès',

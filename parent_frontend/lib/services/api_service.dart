@@ -1,21 +1,20 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:typed_data';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/emploi_du_temps.dart';
 
 class ApiService extends ChangeNotifier {
   // Ajustez l'URL selon votre vrai backend
-  static const String baseUrl = 'http://localhost:8000/api';
+  // Use 10.0.2.2 for Android Emulator, localhost for Web/iOS, or your PC IP for physical devices
+  static const String baseUrl = 'http://127.0.0.1:8000/api';
   String? _token;
 
   String? get token => _token;
   bool get isAuthenticated => _token != null;
 
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('parent_token');
+    _token = await const FlutterSecureStorage().read(key: 'parent_token');
     notifyListeners();
   }
 
@@ -41,8 +40,10 @@ class ApiService extends ChangeNotifier {
             data['access_token']; // Note: in TuteurController it returns 'access_token'
 
         if (_token != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('parent_token', _token!);
+          await const FlutterSecureStorage().write(
+            key: 'parent_token',
+            value: _token!,
+          );
           notifyListeners();
           return {'success': true, 'message': 'Connexion réussie'};
         } else {
@@ -65,6 +66,23 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  Future<void> sendFcmToken(String fcmToken) async {
+    if (_token == null) return;
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/parent/fcm-token'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+        body: jsonEncode({'fcm_token': fcmToken}),
+      );
+    } catch (e) {
+      debugPrint('Erreur envoi FCM Token: $e');
+    }
+  }
+
   Future<Map<String, dynamic>> register(Map<String, String> data) async {
     try {
       final response = await http.post(
@@ -82,8 +100,10 @@ class ApiService extends ChangeNotifier {
         // Enregistrement réussi, sauvegarde du token
         _token = responseData['access_token'];
         if (_token != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('parent_token', _token!);
+          await const FlutterSecureStorage().write(
+            key: 'parent_token',
+            value: _token!,
+          );
           notifyListeners();
         }
         return {
@@ -164,33 +184,6 @@ class ApiService extends ChangeNotifier {
     }
   }
 
-  // --- Reçus de Paiement ---
-  Future<Uint8List?> getReceiptPdf(int paiementId) async {
-    try {
-      if (_token == null) return null;
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/parent/paiements/$paiementId/receipt'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Accept': 'application/pdf',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return response.bodyBytes;
-      } else {
-        debugPrint(
-          'Erreur getReceiptPdf (${response.statusCode}): ${response.body}',
-        );
-        return null;
-      }
-    } catch (e) {
-      debugPrint('Exception getReceiptPdf: $e');
-      return null;
-    }
-  }
-
   Future<bool> sendMessage(String sujet, String message) async {
     if (_token == null) return false;
     try {
@@ -226,6 +219,26 @@ class ApiService extends ChangeNotifier {
       return null;
     } catch (e) {
       debugPrint('Erreur getPresences: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getExercices(int eleveId) async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/parent/exercices/$eleveId'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur getExercices: $e');
       return null;
     }
   }
@@ -273,6 +286,30 @@ class ApiService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Erreur getConvocations: $e');
       return null;
+    }
+  }
+
+  // --- NOUVEAU: Récupérer les professeurs de l'élève ---
+  Future<List<dynamic>> getProfesseurs(int eleveId) async {
+    if (_token == null) return [];
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/parent/professeurs/$eleveId'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['professeurs'] ?? [];
+      } else {
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Erreur getProfesseurs: $e');
+      return [];
     }
   }
 
@@ -430,10 +467,31 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> updateRepetiteur(
+      int eleveId, String phone) async {
+    if (_token == null) {
+      return {'success': false, 'message': 'Non authentifié.'};
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/parent/eleve/$eleveId/repetiteur'),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({'repetiteur_whatsapp': phone}),
+      );
+      return json.decode(response.body);
+    } catch (e) {
+      debugPrint('Erreur updateRepetiteur: $e');
+      return {'success': false, 'message': 'Erreur de connexion.'};
+    }
+  }
+
   Future<void> logout() async {
     _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('parent_token');
+    await const FlutterSecureStorage().delete(key: 'parent_token');
     notifyListeners();
   }
 }

@@ -23,17 +23,27 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   late Eleve _selectedEleve;
   String _selectedMatiere = 'Vue Générale';
+  Future<Map<String, dynamic>?>? _notesFuture;
 
   @override
   void initState() {
     super.initState();
     _selectedEleve = widget.initialEleve;
+    // Initial fetch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchNotes();
+    });
+  }
+
+  void _fetchNotes() {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    setState(() {
+      _notesFuture = apiService.getNotes(_selectedEleve.id);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final apiService = Provider.of<ApiService>(context, listen: false);
-
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -63,6 +73,8 @@ class _NotesScreenState extends State<NotesScreen> {
                   if (_selectedEleve.id != enfant.id) {
                     setState(() {
                       _selectedEleve = enfant;
+                      _selectedMatiere = 'Vue Générale'; // Réinitialiser le filtre
+                      _fetchNotes(); // Recharger uniquement lors du changement d'enfant
                     });
                   }
                 },
@@ -70,9 +82,9 @@ class _NotesScreenState extends State<NotesScreen> {
             ),
           Expanded(
             child: FutureBuilder<Map<String, dynamic>?>(
-              future: apiService.getNotes(_selectedEleve.id),
+              future: _notesFuture,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting || _notesFuture == null) {
                   return const Center(
                     child: CircularProgressIndicator(color: AppTheme.primary),
                   );
@@ -184,6 +196,24 @@ class _NotesScreenState extends State<NotesScreen> {
                       ),
                       const SizedBox(height: 16),
                       _buildTrimestresList(notesParTrimestre),
+                      const SizedBox(height: 40),
+
+                      Text(
+                        'Notes des Examens',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: AppTheme.primaryDark,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildNotesExamensList(
+                        (data['notes_examens'] is Map)
+                            ? Map<String, dynamic>.from(
+                                data['notes_examens'] as Map,
+                              )
+                            : {},
+                      ),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -321,24 +351,27 @@ class _NotesScreenState extends State<NotesScreen> {
         padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
         child: SizedBox(
           height: 220,
-          child: LineChart(
-            LineChartData(
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: 5,
-                getDrawingHorizontalLine: (value) {
-                  return FlLine(color: Colors.grey.shade100, strokeWidth: 1);
-                },
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: 20,
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  tooltipBgColor: Colors.blueGrey,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    return BarTooltipItem(
+                      '${rod.toY.round()}',
+                      const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    );
+                  },
+                ),
               ),
               titlesData: FlTitlesData(
                 show: true,
-                rightTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
-                topTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
-                ),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
@@ -346,7 +379,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       const style = TextStyle(
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 14, // Increased size for legibility
+                        fontSize: 14,
                       );
                       Widget text;
                       switch (value.toInt()) {
@@ -380,50 +413,66 @@ class _NotesScreenState extends State<NotesScreen> {
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 13, // Increased size for legibility
+                        fontSize: 13,
                       ),
                     ),
                   ),
                 ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
               ),
               borderData: FlBorderData(show: false),
-              minX: 0,
-              maxX: 2,
-              minY: 0,
-              maxY: 20,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: [
-                    FlSpot(0, progression.isNotEmpty ? progression[0] : 0),
-                    FlSpot(1, progression.length > 1 ? progression[1] : 0),
-                    FlSpot(2, progression.length > 2 ? progression[2] : 0),
-                  ],
-                  isCurved: true,
-                  color: AppTheme.accent, // Using Gold for the chart line
-                  barWidth: 5, // Thicker curve line
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      return FlDotCirclePainter(
-                        radius: 7, // Larger dots
-                        color: Colors.white,
-                        strokeWidth: 3,
-                        strokeColor: AppTheme.accent,
-                      );
-                    },
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.accent.withValues(alpha: 0.2),
-                        AppTheme.accent.withValues(alpha: 0.0),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: 5,
+                getDrawingHorizontalLine: (value) {
+                  return FlLine(color: Colors.grey.shade200, strokeWidth: 1);
+                },
+              ),
+              barGroups: [
+                BarChartGroupData(
+                  x: 0,
+                  barRods: [
+                    BarChartRodData(
+                      toY: progression.isNotEmpty ? progression[0] : 0,
+                      color: AppTheme.accent,
+                      width: 22,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+                BarChartGroupData(
+                  x: 1,
+                  barRods: [
+                    BarChartRodData(
+                      toY: progression.length > 1 ? progression[1] : 0,
+                      color: AppTheme.accent,
+                      width: 22,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
+                    ),
+                  ],
+                ),
+                BarChartGroupData(
+                  x: 2,
+                  barRods: [
+                    BarChartRodData(
+                      toY: progression.length > 2 ? progression[2] : 0,
+                      color: AppTheme.accent,
+                      width: 22,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -464,16 +513,23 @@ class _NotesScreenState extends State<NotesScreen> {
         padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
         child: SizedBox(
           height: 220,
-          child: LineChart(
-            LineChartData(
-              gridData: FlGridData(
-                show: true,
-                drawVerticalLine: false,
-                horizontalInterval: 5,
-                getDrawingHorizontalLine: (value) => FlLine(
-                  color: Colors.grey.shade100,
-                  strokeWidth: 1,
-                  dashArray: [5, 5],
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: 20,
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  tooltipBgColor: Colors.blueGrey,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    return BarTooltipItem(
+                      '${rod.toY.round()}',
+                      const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    );
+                  },
                 ),
               ),
               titlesData: FlTitlesData(
@@ -533,48 +589,55 @@ class _NotesScreenState extends State<NotesScreen> {
                 ),
               ),
               borderData: FlBorderData(show: false),
-              minX: 0,
-              maxX: 2,
-              minY: 0,
-              maxY: 20,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: [
-                    FlSpot(0, interros),
-                    FlSpot(1, devoirs),
-                    FlSpot(2, moyenne),
-                  ],
-                  isCurved: true,
-                  color: AppTheme.primary,
-                  barWidth: 4,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) {
-                      Color dotColor = AppTheme.primary;
-                      if (index == 0) dotColor = AppTheme.warning;
-                      if (index == 1) dotColor = AppTheme.primaryLight;
-                      if (index == 2) dotColor = AppTheme.success;
-
-                      return FlDotCirclePainter(
-                        radius: 6,
-                        color: Colors.white,
-                        strokeWidth: 3,
-                        strokeColor: dotColor,
-                      );
-                    },
-                  ),
-                  belowBarData: BarAreaData(
-                    show: true,
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.primary.withValues(alpha: 0.2),
-                        AppTheme.primary.withValues(alpha: 0.0),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: 5,
+                getDrawingHorizontalLine: (value) => FlLine(
+                  color: Colors.grey.shade100,
+                  strokeWidth: 1,
+                  dashArray: [5, 5],
+                ),
+              ),
+              barGroups: [
+                BarChartGroupData(
+                  x: 0,
+                  barRods: [
+                    BarChartRodData(
+                      toY: interros,
+                      color: AppTheme.warning,
+                      width: 20,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+                BarChartGroupData(
+                  x: 1,
+                  barRods: [
+                    BarChartRodData(
+                      toY: devoirs,
+                      color: AppTheme.primaryLight,
+                      width: 20,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
+                    ),
+                  ],
+                ),
+                BarChartGroupData(
+                  x: 2,
+                  barRods: [
+                    BarChartRodData(
+                      toY: moyenne,
+                      color: AppTheme.success,
+                      width: 20,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(6),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -928,13 +991,21 @@ class _NotesScreenState extends State<NotesScreen> {
                                 child: Wrap(
                                   spacing: 4,
                                   runSpacing: 4,
-                                  children: interros.map<Widget>((note) {
+                                  children: interros.map<Widget>((noteData) {
+                                    if (noteData == null)
+                                      return const SizedBox();
                                     final val =
                                         double.tryParse(
-                                          note?.toString() ?? '',
+                                          noteData['valeur']?.toString() ?? '',
                                         ) ??
                                         0.0;
-                                    return _buildSmallNoteBadge(val);
+                                    final bool isValidated =
+                                        (noteData['is_validated'] == 1 ||
+                                        noteData['is_validated'] == true);
+                                    return _buildSmallNoteBadge(
+                                      val,
+                                      isValidated: isValidated,
+                                    );
                                   }).toList(),
                                 ),
                               ),
@@ -959,15 +1030,21 @@ class _NotesScreenState extends State<NotesScreen> {
                                 child: Wrap(
                                   spacing: 4,
                                   runSpacing: 4,
-                                  children: devoirs.map<Widget>((note) {
+                                  children: devoirs.map<Widget>((noteData) {
+                                    if (noteData == null)
+                                      return const SizedBox();
                                     final val =
                                         double.tryParse(
-                                          note?.toString() ?? '',
+                                          noteData['valeur']?.toString() ?? '',
                                         ) ??
                                         0.0;
+                                    final bool isValidated =
+                                        (noteData['is_validated'] == 1 ||
+                                        noteData['is_validated'] == true);
                                     return _buildSmallNoteBadge(
                                       val,
                                       isDevoir: true,
+                                      isValidated: isValidated,
                                     );
                                   }).toList(),
                                 ),
@@ -996,7 +1073,11 @@ class _NotesScreenState extends State<NotesScreen> {
     );
   }
 
-  Widget _buildSmallNoteBadge(double note, {bool isDevoir = false}) {
+  Widget _buildSmallNoteBadge(
+    double note, {
+    bool isDevoir = false,
+    bool isValidated = true,
+  }) {
     final color = note >= 10 ? AppTheme.success : AppTheme.error;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1011,14 +1092,183 @@ class _NotesScreenState extends State<NotesScreen> {
               : AppTheme.warning.withValues(alpha: 0.3),
         ),
       ),
-      child: Text(
-        note.toStringAsFixed(1),
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            note.toStringAsFixed(1),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          if (!isValidated) ...[
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.access_time_filled_rounded,
+              size: 10,
+              color: Colors.orange,
+            ),
+          ],
+        ],
       ),
+    );
+  }
+
+  Widget _buildNotesExamensList(Map<String, dynamic> notesExamens) {
+    if (notesExamens.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: const Column(
+          children: [
+            Icon(
+              Icons.assignment_turned_in_rounded,
+              size: 48,
+              color: AppTheme.textSecondary,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Aucune note d\'examen n\'a été enregistrée pour le moment.',
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: notesExamens.keys.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 24),
+      itemBuilder: (context, index) {
+        final typeExamen = notesExamens.keys.elementAt(index);
+        final notes = notesExamens[typeExamen] as List<dynamic>;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.star_rounded,
+                    size: 18,
+                    color: AppTheme.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    typeExamen,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.accent,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: notes.length,
+              separatorBuilder: (ctx, idx) => const SizedBox(height: 12),
+              itemBuilder: (ctx, idx) {
+                final noteData = notes[idx];
+                final matiere = noteData['matiere'] as String;
+                final valeur = double.tryParse(noteData['valeur'].toString());
+                final annee = noteData['annee_scolaire'] ?? '';
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                    border: Border.all(color: Colors.grey.shade100),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            matiere,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          if (annee.isNotEmpty)
+                            Text(
+                              annee,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (valeur != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: valeur >= 10
+                                ? AppTheme.success.withValues(alpha: 0.1)
+                                : AppTheme.error.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '$valeur / 20',
+                            style: TextStyle(
+                              color: valeur >= 10
+                                  ? AppTheme.success
+                                  : AppTheme.error,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

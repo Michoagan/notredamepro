@@ -134,10 +134,29 @@ class DirecteurController extends Controller
         $format = $request->format ?? 'pdf';
 
         if ($format === 'pdf') {
+            // Génération du QR Code d'authentification
+            $qrData = json_encode([
+                'type' => 'Liste des Élèves',
+                'classe' => $classe->nom,
+                'effectif' => $eleves->count(),
+                'date' => now()->format('Y-m-d H:i:s'),
+                'certifie_par' => 'Notre Dame Pro'
+            ]);
+            
+            $qrResult = \Endroid\QrCode\Builder\Builder::create()
+                ->writer(new \Endroid\QrCode\Writer\PngWriter())
+                ->data($qrData)
+                ->size(100)
+                ->margin(0)
+                ->build();
+                
+            $qrCodeImage = base64_encode($qrResult->getString());
+
             $pdf = PDF::loadView('directeur.classes-eleves.export-pdf', [
                 'classe' => $classe,
                 'eleves' => $eleves,
                 'date' => now()->format('d/m/Y'),
+                'qrCodeImage' => $qrCodeImage
             ]);
 
             return $pdf->download('eleves-'.$classe->nom.'-'.now()->format('Y-m-d').'.pdf');
@@ -265,32 +284,104 @@ class DirecteurController extends Controller
         $labels = Classe::where('is_active', true)->pluck('nom');
         $elevesParClasse = Classe::withCount('eleves')->where('is_active', true)->pluck('eleves_count');
 
-        // Calcul des revenus du mois en cours
-        $debutMois = Carbon::now()->startOfMonth();
-        $finMois = Carbon::now()->endOfMonth();
+        // Période d'analyse
+        $debutMois = \Carbon\Carbon::now()->startOfMonth();
+        $finMois = \Carbon\Carbon::now()->endOfMonth();
 
-        $revenusMois = Paiement::where('statut', 'réussi')
+        // --- 1. BILAN FINANCIER ---
+        // Entrées
+        $totalScolarite = Paiement::where('statut', 'success')
             ->whereBetween('date_paiement', [$debutMois, $finMois])
             ->sum('montant');
+        $totalVentes = \App\Models\Vente::whereBetween('date_vente', [$debutMois, $finMois])
+            ->sum('montant_total');
+        $totalEntrees = $totalScolarite + $totalVentes;
 
-        // Récupération des derniers paiements
-        $derniersPaiements = Paiement::with('eleve.classe')
-            ->orderBy('date_paiement', 'desc')
-            ->limit(5)
-            ->get();
+        // Sorties
+        $totalSalaires = \App\Models\Depense::whereBetween('date_depense', [$debutMois, $finMois])
+            ->where('categorie', 'salaire')
+            ->sum('montant');
+        $totalDepensesGenerales = \App\Models\Depense::whereBetween('date_depense', [$debutMois, $finMois])
+            ->where('categorie', '!=', 'salaire')
+            ->sum('montant');
+        $totalSorties = $totalSalaires + $totalDepensesGenerales;
+        $soldeNet = $totalEntrees - $totalSorties;
 
-        // Pour le graphique "genre"
-        $garcons = Eleve::where('sexe', 'M')->count();
-        $filles = Eleve::where('sexe', 'F')->count();
+        // --- 2. BILAN INVENTAIRE ---
+        $valeurStock = \App\Models\Article::where('type', 'physique')
+            ->selectRaw('SUM(stock_actuel * prix_unitaire) as total')
+            ->value('total') ?? 0;
+
+        $alertesStock = \App\Models\Article::where('type', 'physique')
+            ->whereRaw('stock_actuel <= stock_min')
+            ->count();
+
+        // --- 3. INTELLIGENCE (Suggestions de Décisions) ---
+        $decisions = [];
+        
+        // Santé financière
+        if ($totalSorties > 0 && $soldeNet < 0) {
+            $decisions[] = [
+                'type' => 'warning',
+                'titre' => 'Déficit Mensuel Détecté',
+                'message' => 'Les dépenses ('.number_format($totalSorties, 0, ',', ' ').' FCFA) dépassent les entrées. Il est conseillé de retarder les achats non essentiels ou de relancer le recouvrement des scolarités.',
+            ];
+        } elseif ($totalEntrees > 0 && ($totalSalaires / $totalEntrees) > 0.6) {
+            $decisions[] = [
+                'type' => 'warning',
+                'titre' => 'Masse Salariale Élevée',
+                'message' => 'Les salaires représentent plus de 60% de vos revenus ce mois-ci. Assurez-vous d\'augmenter les recouvrements pour stabiliser la trésorerie.',
+            ];
+        } else {
+             $decisions[] = [
+                'type' => 'success',
+                'titre' => 'Santé Financière Stable',
+                'message' => 'La balance de trésorerie est positive ou maîtrisée. Le recouvrement actuel couvre efficacement les charges d\'exploitation.',
+            ];
+        }
+
+        // Inventaire
+        if ($alertesStock > 0) {
+            $decisions[] = [
+                'type' => 'error',
+                'titre' => 'Ruptures de Stock Imminentes',
+                'message' => $alertesStock.' article(s) ont franchi le seuil d\'alerte. Approuvez des bons de commande rapidement pour éviter de bloquer les ventes ou le fonctionnement de l\'école.',
+            ];
+        }
 
         return response()->json([
             'success' => true,
-            'data' => compact(
-                'totalEleves', 'totalClasses', 'totalProfesseurs',
-                'derniersEleves', 'derniersProfesseurs', 'repartitionSexe',
-                'labels', 'elevesParClasse', 'revenusMois', 'derniersPaiements',
-                'garcons', 'filles'
-            ),
+            'data' => [
+                'statistiques' => [
+                    'totalEleves' => $totalEleves,
+                    'totalClasses' => $totalClasses,
+                    'totalProfesseurs' => $totalProfesseurs,
+                    'garcons' => $repartitionSexe['garcons'],
+                    'filles' => $repartitionSexe['filles'],
+                    'labels' => $labels,
+                    'elevesParClasse' => $elevesParClasse,
+                    'derniersEleves' => $derniersEleves,
+                    'derniersProfesseurs' => $derniersProfesseurs,
+                ],
+                'financier' => [
+                    'entrees' => [
+                        'scolarite' => $totalScolarite,
+                        'ventes' => $totalVentes,
+                        'total' => $totalEntrees
+                    ],
+                    'sorties' => [
+                        'salaires' => $totalSalaires,
+                        'depenses_generales' => $totalDepensesGenerales,
+                        'total' => $totalSorties
+                    ],
+                    'solde_net' => $soldeNet
+                ],
+                'inventaire' => [
+                    'valeur_totale' => (float) $valeurStock,
+                    'alertes_rupture' => $alertesStock,
+                ],
+                'decisions' => $decisions
+            ],
         ]);
     }
 
@@ -571,11 +662,29 @@ class DirecteurController extends Controller
             ->orderBy('first_name')
             ->get();
 
+        // Générer le QR Code d'authentification
+        $qrData = json_encode([
+            'type' => 'Liste des Professeurs',
+            'effectif' => $professeurs->count(),
+            'date' => now()->format('Y-m-d H:i:s'),
+            'certifie_par' => 'Notre Dame Pro'
+        ]);
+        
+        $qrResult = \Endroid\QrCode\Builder\Builder::create()
+            ->writer(new \Endroid\QrCode\Writer\PngWriter())
+            ->data($qrData)
+            ->size(100)
+            ->margin(0)
+            ->build();
+            
+        $qrCodeImage = base64_encode($qrResult->getString());
+
         // Générer le PDF
         $pdf = \PDF::loadView('directeur.professeurs.export', [
             'professeurs' => $professeurs,
             'filters' => $filters,
             'date' => now()->format('d/m/Y'),
+            'qrCodeImage' => $qrCodeImage
         ]);
 
         return $pdf->download('professeurs-export-'.now()->format('Y-m-d').'.pdf');

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class CahierTexte extends Model
 {
@@ -44,6 +45,11 @@ class CahierTexte extends Model
         return Attribute::make(
             get: fn ($value) => \Carbon\Carbon::parse($value),
         );
+    }
+
+    public function elevesNonFaits()
+    {
+        return $this->belongsToMany(Eleve::class, 'exercice_non_faits', 'cahier_texte_id', 'eleve_id');
     }
 }
 

@@ -5,6 +5,8 @@ import '../models/eleve.dart';
 import '../services/api_service.dart';
 import '../widgets/enfant_selector.dart';
 import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:url_launcher/url_launcher.dart';
 
 class FinancesScreen extends StatefulWidget {
@@ -119,6 +121,11 @@ class _FinancesScreenState extends State<FinancesScreen> {
                     data['paiement_en_ligne_actif'] == 'true';
 
                 double totalPaye = 0.0;
+                // Filter the list to only include 'success' array items
+                final successfulPaiements = paiements
+                    .where((p) => p['statut'] == 'success')
+                    .toList();
+
                 for (var p in paiements) {
                   if (p['statut'] == 'success') {
                     totalPaye += _parseDouble(p['montant']);
@@ -162,7 +169,7 @@ class _FinancesScreenState extends State<FinancesScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _buildHistoriqueList(paiements),
+                      _buildHistoriqueList(successfulPaiements),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -487,11 +494,6 @@ class _FinancesScreenState extends State<FinancesScreen> {
                     const SizedBox(height: 8),
                     InkWell(
                       onTap: () async {
-                        final apiService = Provider.of<ApiService>(
-                          context,
-                          listen: false,
-                        );
-
                         // Show loading indicator
                         showDialog(
                           context: context,
@@ -503,30 +505,127 @@ class _FinancesScreenState extends State<FinancesScreen> {
                           ),
                         );
 
-                        final pdfBytes = await apiService.getReceiptPdf(
-                          p['id'],
+                        // Generate PDF natively
+                        final font = await PdfGoogleFonts.openSansRegular();
+                        final fontBold = await PdfGoogleFonts.openSansBold();
+
+                        final pdf = pw.Document(
+                          theme: pw.ThemeData.withFont(
+                            base: font,
+                            bold: fontBold,
+                          ),
                         );
+
+                        pdf.addPage(
+                          pw.Page(
+                            pageFormat: PdfPageFormat.a4,
+                            build: (pw.Context context) {
+                              return pw.Container(
+                                padding: const pw.EdgeInsets.all(30),
+                                child: pw.Column(
+                                  crossAxisAlignment:
+                                      pw.CrossAxisAlignment.start,
+                                  children: [
+                                    pw.Header(
+                                      level: 0,
+                                      child: pw.Row(
+                                        mainAxisAlignment:
+                                            pw.MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          pw.Text(
+                                            'REÇU DE PAIEMENT',
+                                            style: pw.TextStyle(
+                                              fontSize: 24,
+                                              fontWeight: pw.FontWeight.bold,
+                                              color: PdfColors.blue900,
+                                            ),
+                                          ),
+                                          pw.Text(
+                                            'NDTG',
+                                            style: pw.TextStyle(
+                                              fontSize: 20,
+                                              color: PdfColors.grey700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    pw.SizedBox(height: 20),
+                                    pw.Text(
+                                      'Informations de l\'élève',
+                                      style: pw.TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: pw.FontWeight.bold,
+                                      ),
+                                    ),
+                                    pw.Divider(),
+                                    pw.Text('Nom: ${_selectedEleve.nom}'),
+                                    pw.Text('Prénom: ${_selectedEleve.prenom}'),
+                                    pw.Text(
+                                      'Matricule: ${_selectedEleve.matricule}',
+                                    ),
+                                    pw.SizedBox(height: 20),
+                                    pw.Text(
+                                      'Détails du Paiement',
+                                      style: pw.TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: pw.FontWeight.bold,
+                                      ),
+                                    ),
+                                    pw.Divider(),
+                                    pw.Text(
+                                      'Référence: ${p['reference_externe'] ?? p['reference'] ?? 'N/A'}',
+                                    ),
+                                    pw.Text(
+                                      'Montant: ${montant.toStringAsFixed(0)} FCFA',
+                                    ),
+                                    pw.Text('Date: $date'),
+                                    pw.Text(
+                                      'Méthode: ${p['methode'] ?? 'N/A'}',
+                                    ),
+                                    pw.Text(
+                                      'Statut: Payé',
+                                      style: pw.TextStyle(
+                                        color: PdfColors.green700,
+                                      ),
+                                    ),
+                                    pw.SizedBox(height: 40),
+                                    pw.Center(
+                                      child: pw.BarcodeWidget(
+                                        color: PdfColors.black,
+                                        barcode: pw.Barcode.qrCode(),
+                                        data:
+                                            '{"recu_id":${p['id']},"reference":"${p['reference_externe'] ?? p['reference'] ?? ''}","eleve":"${_selectedEleve.nom} ${_selectedEleve.prenom}","montant":$montant,"date":"$date","statut":"Payé"}',
+                                        width: 150,
+                                        height: 150,
+                                      ),
+                                    ),
+                                    pw.SizedBox(height: 20),
+                                    pw.Center(
+                                      child: pw.Text(
+                                        'Document généré le ${DateTime.now().toString().substring(0, 16)}',
+                                        style: pw.TextStyle(
+                                          fontSize: 10,
+                                          color: PdfColors.grey,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        );
+
+                        final pdfBytes = await pdf.save();
 
                         // Hide loading indicator
                         if (context.mounted) Navigator.pop(context);
 
-                        if (pdfBytes != null) {
-                          await Printing.sharePdf(
-                            bytes: pdfBytes,
-                            filename: 'Recu_Paiement_${p['id']}.pdf',
-                          );
-                        } else {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Erreur lors du téléchargement du reçu.',
-                                ),
-                                backgroundColor: AppTheme.error,
-                              ),
-                            );
-                          }
-                        }
+                        await Printing.sharePdf(
+                          bytes: pdfBytes,
+                          filename: 'Recu_Paiement_${p['id']}.pdf',
+                        );
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(

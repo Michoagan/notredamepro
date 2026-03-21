@@ -160,9 +160,47 @@ class CaisseController extends Controller
             'date_generation' => now()->format('d/m/Y H:i:s')
         ]);
         
-        $filename = "recu_paiement_{$paiement->id}_{$paiement->eleve->nom}.pdf";
+        $filename = 'recu_paiement_' . $paiement->reference . '.pdf';
 
-        return $pdf->download($filename);
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', "inline; filename=\"$filename\"");
+    }
+
+    /**
+     * Get QR Code for a Paiement (For React PDF generation)
+     */
+    public function getPaiementQrCode(Paiement $paiement)
+    {
+        $paiement->load(['eleve']);
+        
+        $qrData = [
+            'recu_id' => $paiement->id,
+            'reference' => $paiement->reference_externe ?? $paiement->reference,
+            'eleve' => $paiement->eleve->nom . ' ' . $paiement->eleve->prenom,
+            'montant' => $paiement->montant,
+            'date' => $paiement->date_paiement ? \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y H:i') : null,
+            'statut' => 'Payé'
+        ];
+
+        $qrText = json_encode($qrData);
+
+        $result = \Endroid\QrCode\Builder\Builder::create()
+            ->writer(new \Endroid\QrCode\Writer\PngWriter())
+            ->data($qrText)
+            ->encoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+            ->errorCorrectionLevel(\Endroid\QrCode\ErrorCorrectionLevel::Low)
+            ->size(200) // Slightly larger for better clarity on client side
+            ->margin(10)
+            ->roundBlockSizeMode(\Endroid\QrCode\RoundBlockSizeMode::Margin)
+            ->foregroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+            ->backgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255))
+            ->build();
+
+        return response()->json([
+            'success' => true,
+            'qrCodeBase64' => base64_encode($result->getString())
+        ]);
     }
 
     /**
@@ -251,5 +289,87 @@ class CaisseController extends Controller
             ]);
 
         }); // End Transaction
+    }
+
+    /**
+     * Download the PDF receipt for a specific vente.
+     */
+    public function downloadVenteReceipt(Vente $vente)
+    {
+        $vente->load(['eleve', 'eleve.classe', 'auteur', 'lignes.article']);
+        
+        // Generate QR code locally via endroid/qr-code
+        $qrData = [
+            'vente_id' => $vente->id,
+            'reference' => $vente->reference,
+            'client' => $vente->eleve ? $vente->eleve->nom . ' ' . $vente->eleve->prenom : ($vente->nom_client ?? 'Client Anonyme'),
+            'montant' => $vente->montant_total,
+            'date' => $vente->date_vente ? \Carbon\Carbon::parse($vente->date_vente)->format('d/m/Y H:i') : null,
+            'statut' => 'Payé'
+        ];
+
+        $qrText = json_encode($qrData);
+
+        $result = \Endroid\QrCode\Builder\Builder::create()
+            ->writer(new \Endroid\QrCode\Writer\PngWriter())
+            ->data($qrText)
+            ->encoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+            ->errorCorrectionLevel(\Endroid\QrCode\ErrorCorrectionLevel::Low)
+            ->size(100)
+            ->margin(10)
+            ->roundBlockSizeMode(\Endroid\QrCode\RoundBlockSizeMode::Margin)
+            ->foregroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+            ->backgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255))
+            ->build();
+
+        $qrCodeImage = base64_encode($result->getString());
+
+        $pdf = Pdf::loadView('pdf.vente_receipt', [
+            'vente' => $vente,
+            'qrCodeImage' => $qrCodeImage,
+            'date_generation' => now()->format('d/m/Y H:i:s')
+        ]);
+        
+        $filename = 'recu_vente_' . $vente->reference . '.pdf';
+
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', "inline; filename=\"$filename\"");
+    }
+
+    /**
+     * Get QR Code for a Vente (For React PDF generation)
+     */
+    public function getVenteQrCode(Vente $vente)
+    {
+        $vente->load(['eleve']);
+        
+        $qrData = [
+            'vente_id' => $vente->id,
+            'reference' => $vente->reference,
+            'client' => $vente->eleve ? $vente->eleve->nom . ' ' . $vente->eleve->prenom : ($vente->nom_client ?? 'Client Anonyme'),
+            'montant' => $vente->montant_total,
+            'date' => $vente->date_vente ? \Carbon\Carbon::parse($vente->date_vente)->format('d/m/Y H:i') : null,
+            'statut' => 'Payé'
+        ];
+
+        $qrText = json_encode($qrData);
+
+        $result = \Endroid\QrCode\Builder\Builder::create()
+            ->writer(new \Endroid\QrCode\Writer\PngWriter())
+            ->data($qrText)
+            ->encoding(new \Endroid\QrCode\Encoding\Encoding('UTF-8'))
+            ->errorCorrectionLevel(\Endroid\QrCode\ErrorCorrectionLevel::Low)
+            ->size(200)
+            ->margin(10)
+            ->roundBlockSizeMode(\Endroid\QrCode\RoundBlockSizeMode::Margin)
+            ->foregroundColor(new \Endroid\QrCode\Color\Color(0, 0, 0))
+            ->backgroundColor(new \Endroid\QrCode\Color\Color(255, 255, 255))
+            ->build();
+
+        return response()->json([
+            'success' => true,
+            'qrCodeBase64' => base64_encode($result->getString())
+        ]);
     }
 }

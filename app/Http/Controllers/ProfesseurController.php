@@ -243,7 +243,84 @@ class ProfesseurController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Déconnexion réussie',
+             ]);
+    }
+
+    /**
+     * Update FCM Token for Push Notifications
+     */
+    public function updateFcmToken(Request $request)
+    {
+        $request->validate([
+            'fcm_token' => 'required|string',
         ]);
+
+        $professeur = Auth::user();
+        $professeur->fcm_token = $request->fcm_token;
+        $professeur->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'FCM Token updated successfully.',
+        ]);
+    }
+
+    /**
+     * Signaler un exercice non fait pour un élève
+     */
+    public function signalerExerciceNonFait(Request $request)
+    {
+        $request->validate([
+            'eleve_id' => 'required|exists:eleves,id',
+        ]);
+
+        $professeur = Auth::user();
+
+        if (!$professeur instanceof \App\Models\Professeur) {
+            return response()->json(['error' => 'Non autorisé'], 403);
+        }
+
+        try {
+            $eleve = \App\Models\Eleve::findOrFail($request->eleve_id);
+            
+            // Récupérer les tuteurs de l'élève
+            $tuteurs = $eleve->tuteurs;
+
+            if ($tuteurs->isNotEmpty()) {
+                // Envoyer la notification
+                \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\ExerciceNonFaitNotification($eleve));
+            }
+
+            // --- ENVOI WHATSAPP AUTOMATIQUE AU REPETITEUR ---
+            if (!empty($eleve->repetiteur_whatsapp)) {
+                $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
+                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                $texteWhatsapp .= "Le professeur *{$professeur->nom} {$professeur->prenom}* signale que votre enfant n'a pas fait son exercice aujourd'hui.\n\n";
+                $texteWhatsapp .= "Merci de suivre cela de près.";
+
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                        'phone' => $eleve->repetiteur_whatsapp,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'L\'exercice non fait a été signalé aux parents.',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Erreur lors du signalement d\'exercice non fait: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur est survenue lors du signalement.',
+            ], 500);
+        }
     }
 
     /**
@@ -597,6 +674,26 @@ class ProfesseurController extends Controller
             }
         }
 
+        $notes_examens = collect();
+        if ($classe_selectionnee) {
+            $query = \App\Models\NoteExamen::where('classe_id', $classe_selectionnee->id);
+            if ($matiere_selectionnee) {
+                $query->where('matiere_id', $matiere_selectionnee->id);
+            }
+            if ($eleve_selectionne) {
+                $query->where('eleve_id', $eleve_selectionne->id);
+            }
+            $notes_examens = $query->with(['eleve', 'matiere'])->get()->map(function($n) {
+                return [
+                    'eleve_nom' => $n->eleve ? $n->eleve->nom_complet : 'Inconnu',
+                    'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
+                    'type_examen' => $n->type_examen,
+                    'valeur' => $n->valeur,
+                    'annee_scolaire' => $n->annee_scolaire
+                ];
+            });
+        }
+
         return response()->json([
             'success' => true,
             'professeur' => $professeur,
@@ -605,6 +702,7 @@ class ProfesseurController extends Controller
             'classe_selectionnee' => $classe_selectionnee,
             'matiere_selectionnee' => $matiere_selectionnee,
             'eleves' => $eleves,
+            'notes_examens' => $notes_examens,
         ]);
     }
 
@@ -1064,7 +1162,7 @@ class ProfesseurController extends Controller
             foreach ($eleves as $eleve) {
                 $isAbsent = in_array($eleve->id, $request->absents);
                 
-                \App\Models\Presence::updateOrCreate(
+                $presence = \App\Models\Presence::updateOrCreate(
                     [
                         'eleve_id' => $eleve->id,
                         'classe_id' => $request->classe_id,
@@ -1077,6 +1175,25 @@ class ProfesseurController extends Controller
                         'remarque' => $isAbsent ? 'Absent' : null,
                     ]
                 );
+
+                $isNewAbsent = $isAbsent && ($presence->wasRecentlyCreated || $presence->wasChanged('present'));
+
+                if ($isNewAbsent && !empty($eleve->repetiteur_whatsapp)) {
+                    $texteWhatsapp = "❌ *Alerte Absence*\n\n";
+                    $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                    $texteWhatsapp .= "Date : *" . \Carbon\Carbon::parse($request->date)->format('d/m/Y') . "*\n\n";
+                    $texteWhatsapp .= "L'élève a été marqué absent en cours.\n";
+                    $texteWhatsapp .= "Nous vous prions de vérifier s'il s'agit d'une raison justifiée ou non.";
+
+                    try {
+                        \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                            'phone' => $eleve->repetiteur_whatsapp,
+                            'message' => $texteWhatsapp
+                        ]);
+                    } catch (\Exception $reqEx) {
+                        \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Absence) : ' . $reqEx->getMessage());
+                    }
+                }
             }
 
             DB::commit();
@@ -1380,6 +1497,7 @@ class ProfesseurController extends Controller
             'notion_cours' => 'required|string',
             'contenu_cours' => 'nullable|string',
             'observations' => 'nullable|string',
+            'travail_a_faire' => 'nullable|string',
         ]);
 
         if (! $professeur->classes->contains($request->classe_id)) {
@@ -1408,15 +1526,107 @@ class ProfesseurController extends Controller
             'contenu_cours' => $request->input('contenu_cours', ''),
             'observations' => $request->input('observations', ''),
             'objectifs' => '', 
-            'travail_a_faire' => '',
+            'travail_a_faire' => $request->input('travail_a_faire', ''),
         ]);
 
         $cahier->load(['classe', 'matiere']);
+
+        if (!empty($cahier->travail_a_faire)) {
+            $tuteurs = collect();
+            $eleves = \App\Models\Eleve::where('classe_id', $cahier->classe_id)->with('tuteurs')->get();
+            foreach ($eleves as $eleve) {
+                foreach ($eleve->tuteurs as $tuteur) {
+                    $tuteurs->push($tuteur);
+                }
+
+                // --- WHATSAPP REPETITEUR ---
+                if (!empty($eleve->repetiteur_whatsapp)) {
+                    $texteWhatsapp = "📚 *Nouveau Devoir à faire*\n\n";
+                    $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                    $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
+                    $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
+                    $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
+
+                    try {
+                        \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                            'phone' => $eleve->repetiteur_whatsapp,
+                            'message' => $texteWhatsapp
+                        ]);
+                    } catch (\Exception $reqEx) {
+                        \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                    }
+                }
+            }
+            $tuteurs = $tuteurs->unique('id');
+            \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\NouvelExerciceNotification($cahier));
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Cahier de texte enregistré avec succès.',
             'cahier' => $cahier,
+        ]);
+    }
+
+    public function getExercices()
+    {
+        $professeur = Auth::user();
+
+        $cahiers = CahierTexte::where('professeur_id', $professeur->id)
+            ->whereNotNull('travail_a_faire')
+            ->where('travail_a_faire', '!=', '')
+            ->with(['classe' => function ($q) {
+                $q->select('id', 'nom');
+            }, 'matiere', 'elevesNonFaits'])
+            ->orderBy('date_cours', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'exercices' => $cahiers,
+        ]);
+    }
+
+    public function markExerciceNonFait(Request $request, $id)
+    {
+        $professeur = Auth::user();
+        
+        $request->validate([
+            'eleves_ids' => 'array',
+            'eleves_ids.*' => 'exists:eleves,id',
+        ]);
+
+        $cahier = CahierTexte::where('id', $id)->where('professeur_id', $professeur->id)->firstOrFail();
+
+        $cahier->elevesNonFaits()->sync($request->input('eleves_ids', []));
+
+        $eleves = \App\Models\Eleve::whereIn('id', $request->input('eleves_ids', []))->with('tuteurs')->get();
+        foreach ($eleves as $eleve) {
+            foreach ($eleve->tuteurs as $tuteur) {
+                $tuteur->notify(new \App\Notifications\ExerciceNonFaitNotification($cahier, $eleve));
+            }
+
+            // --- WHATSAPP REPETITEUR ---
+            if (!empty($eleve->repetiteur_whatsapp)) {
+                $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
+                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n\n";
+                $texteWhatsapp .= "L'élève n'a pas fait l'exercice demandé : _{$cahier->travail_a_faire}_. Merci de veiller à ce que cela soit fait.";
+
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                        'phone' => $eleve->repetiteur_whatsapp,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Statut des exercices mis à jour et parents notifiés.',
         ]);
     }
 

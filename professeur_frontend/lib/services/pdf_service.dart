@@ -137,7 +137,7 @@ class PdfService {
 
     // Build QR Code Data
     final qrData =
-        'Fiche de Paie NDPro\nProf: $profName\nMois: $mois/$annee\nTotal: ${paiement['montant_total']} FCFA\nStatut: ${paiement['statut']}\nGénéré le: $dateGen';
+        'Fiche de Paie NDPro\nProf: $profName\nMois: $mois/$annee\nTotal: ${paiement['net_a_payer'] ?? paiement['montant_total']} FCFA\nStatut: ${paiement['statut']}\nGénéré le: $dateGen';
 
     pdf.addPage(
       pw.Page(
@@ -162,10 +162,17 @@ class PdfService {
                           pw.Text('Direction des Ressources Humaines',
                               style: const pw.TextStyle(fontSize: 12)),
                           pw.SizedBox(height: 20),
-                          pw.Text('FICHE DE PAIE',
+                          pw.Text(
+                              paiement['statut'] == 'paye'
+                                  ? 'REÇU DE SALAIRE'
+                                  : 'BON DE CAISSE (PRÉ-PAIEMENT)',
                               style: pw.TextStyle(
                                   fontSize: 20,
-                                  fontWeight: pw.FontWeight.bold)),
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: paiement['statut'] == 'paye'
+                                      ? PdfColors.green800
+                                      : PdfColors.orange700)),
+                          pw.SizedBox(height: 5),
                           pw.Text('Mois validé: $mois / $annee',
                               style: const pw.TextStyle(fontSize: 14)),
                         ]),
@@ -239,10 +246,10 @@ class PdfService {
                       pw.Padding(
                           padding: const pw.EdgeInsets.all(8),
                           child: pw.Text(
-                              'Heures validées (${paiement['total_heures']} h)')),
+                              'Heures validées (${paiement['heures_travaillees'] ?? 0} h)')),
                       pw.Padding(
                           padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('${paiement['montant_heures']}',
+                          child: pw.Text('${paiement['montant_base'] ?? 0}',
                               textAlign: pw.TextAlign.right)),
                     ]),
                     pw.TableRow(children: [
@@ -251,7 +258,7 @@ class PdfService {
                           child: pw.Text('Primes & Indemnités')),
                       pw.Padding(
                           padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('${paiement['montant_primes']}',
+                          child: pw.Text('${paiement['primes'] ?? 0}',
                               textAlign: pw.TextAlign.right)),
                     ]),
                     pw.TableRow(
@@ -266,7 +273,7 @@ class PdfService {
                                       color: PdfColors.green800))),
                           pw.Padding(
                               padding: const pw.EdgeInsets.all(8),
-                              child: pw.Text('${paiement['montant_total']}',
+                              child: pw.Text('${paiement['net_a_payer'] ?? paiement['montant_total'] ?? 0}',
                                   style: pw.TextStyle(
                                       fontWeight: pw.FontWeight.bold,
                                       color: PdfColors.green800),

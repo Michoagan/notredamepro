@@ -42,8 +42,8 @@ class SessionCompositionController extends Controller
             'libelle' => 'required|string|max:255',
             'trimestre' => 'required|integer|in:1,2,3',
             'numero_devoir' => 'required|integer|in:1,2',
-            'is_global' => 'required|boolean',
-            'classe_id' => 'required_if:is_global,false|nullable|exists:classes,id',
+            'cible' => 'required|string|in:toute_lecole,1er_cycle,2nd_cycle,classe',
+            'classe_id' => 'required_if:cible,classe|nullable|exists:classes,id',
             'horaires' => 'required|array|min:1',
             'horaires.*.matiere_id' => 'required|exists:matieres,id',
             'horaires.*.date_composition' => 'required|date',
@@ -65,8 +65,8 @@ class SessionCompositionController extends Controller
                 'libelle' => $request->libelle,
                 'trimestre' => $request->trimestre,
                 'numero_devoir' => $request->numero_devoir,
-                'is_global' => $request->is_global,
-                'classe_id' => $request->is_global ? null : $request->classe_id,
+                'cible' => $request->cible,
+                'classe_id' => ($request->cible === 'classe') ? $request->classe_id : null,
             ]);
 
             foreach ($request->horaires as $horaire) {

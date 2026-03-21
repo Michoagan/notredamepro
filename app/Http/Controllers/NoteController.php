@@ -73,9 +73,11 @@ class NoteController extends Controller
 
     public function storeNotes(Request $request)
     {
-        $professeur = Auth::user();
+        $user = Auth::user();
+        $isProfesseur = $user instanceof \App\Models\Professeur;
+        $isCenseur = $user instanceof \App\Models\Direction && $user->isCenseur();
 
-        if (! $professeur instanceof \App\Models\Professeur) {
+        if (! $isProfesseur && ! $isCenseur) {
             return response()->json(['error' => 'Non autorisé'], 403);
         }
 
@@ -90,7 +92,7 @@ class NoteController extends Controller
         ]);
 
         // Vérifier que le professeur a accès à cette classe et matière
-        if (! $professeur->classes->contains($request->classe_id)) {
+        if ($isProfesseur && ! $user->classes->contains($request->classe_id)) {
             return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
         }
 
@@ -98,10 +100,15 @@ class NoteController extends Controller
         $matiere = Matiere::findOrFail($request->matiere_id);
 
         // Récupérer le coefficient depuis la table classe_matiere
+        $profId = $isProfesseur ? $user->id : DB::table('classe_matiere')
+                                                 ->where('classe_id', $request->classe_id)
+                                                 ->where('matiere_id', $request->matiere_id)
+                                                 ->value('professeur_id');
+
         $coefficient = DB::table('classe_matiere')
             ->where('classe_id', $request->classe_id)
             ->where('matiere_id', $request->matiere_id)
-            ->where('professeur_id', $professeur->id)
+            ->where('professeur_id', $profId)
             ->value('coefficient');
 
         // Si le coefficient n'est pas trouvé, utiliser une valeur par défaut
@@ -147,9 +154,9 @@ class NoteController extends Controller
                         ->first();
 
                     // Si la note existe et que la colonne cible a déjà une valeur, on refuse la mise à jour
-                    if ($existingNote && !is_null($existingNote->$colonne)) {
+                    if (!$isCenseur && $existingNote && !is_null($existingNote->$colonne)) {
                         $notesIgnorees++;
-                        continue; // On ignore cette note pour ne pas écraser l'existant
+                        continue; // On ignore cette note pour ne pas écraser l'existant si on n'est pas censeur
                     }
 
                     $note = Note::updateOrCreate(
@@ -161,8 +168,11 @@ class NoteController extends Controller
                         ],
                         [
                             $colonne => $valeurNote,
-                            'professeur_id' => $professeur->id,
+                            'professeur_id' => $profId, // Associate with the assigned teacher even if entered by Censeur
                             'coefficient' => $coefficient,
+                            'is_validated' => $isCenseur, // Censeur updates automatically validate the grade
+                            'validated_at' => $isCenseur ? now() : null,
+                            'validated_by' => $isCenseur ? 'Censeur' : null,
                         ]
                     );
                     $notesEnregistrees++;
@@ -174,6 +184,82 @@ class NoteController extends Controller
                     
                     foreach ($tuteurs as $tuteur) {
                         $tuteur->notify(new \App\Notifications\NoteAddedNotification($note));
+                    }
+
+                    // --- ALGORITHME D'ALERTE CHUTE DE NOTES ---
+                    $declencherAlerte = false;
+                    $raisonAlerte = '';
+
+                    // Vérification : 2 mauvaises notes consécutives
+                    if ($valeurNote < 10) {
+                        if ($request->type_note === 'interro') {
+                            if ($numero == 2 && $note->premier_interro !== null && $note->premier_interro < 10) {
+                                $declencherAlerte = true;
+                                $raisonAlerte = 'a obtenu consécutivement moins de la moyenne de classe aux interrogations';
+                            } elseif ($numero == 3 && $note->deuxieme_interro !== null && $note->deuxieme_interro < 10) {
+                                $declencherAlerte = true;
+                                $raisonAlerte = 'a obtenu consécutivement moins de la moyenne de classe aux interrogations';
+                            } elseif ($numero == 4 && $note->troisieme_interro !== null && $note->troisieme_interro < 10) {
+                                $declencherAlerte = true;
+                                $raisonAlerte = 'a obtenu consécutivement moins de la moyenne de classe aux interrogations';
+                            }
+                        } elseif ($request->type_note === 'devoir') {
+                            if ($numero == 2 && $note->premier_devoir !== null && $note->premier_devoir < 10) {
+                                $declencherAlerte = true;
+                                $raisonAlerte = 'a échoué consécutivement aux devoirs sur table';
+                            }
+                        }
+                    }
+
+                    // Déclenchement
+                    $note->loadMissing(['eleve', 'matiere']);
+                    $eleveAlerte = $note->eleve;
+                    $matiereAlerte = $note->matiere;
+                    $isNewOrUpdated = $note->wasRecentlyCreated || $note->wasChanged($colonne);
+
+                    if ($declencherAlerte) {
+                        try {
+                            // Push Parent
+                            foreach ($tuteurs as $tuteur) {
+                                $tuteur->notify(new \App\Notifications\AlerteChuteNotesNotification($eleveAlerte, $matiereAlerte, $raisonAlerte));
+                            }
+
+                            // Push Professeur via Professeur Token
+                            $profToAlert = \App\Models\Professeur::find($profId);
+                            if ($profToAlert) {
+                                $profToAlert->notify(new \App\Notifications\AlerteChuteNotesNotification($eleveAlerte, $matiereAlerte, $raisonAlerte));
+                            }
+
+                        } catch (\Exception $e) {
+                            \Illuminate\Support\Facades\Log::error('Erreur Push Alerte Notes : ' . $e->getMessage());
+                        }
+                    }
+
+                    // --- ENVOI WHATSAPP AUTOMATIQUE (POUR TOUTE NOUVELLE NOTE OU CHUTE) ---
+                    if ($isNewOrUpdated && !empty($eleveAlerte->repetiteur_whatsapp)) {
+                        $typeEval = $request->type_note === 'interro' ? 'Interrogation' : 'Devoir';
+                        $messageType = "$typeEval $numero";
+                        
+                        $texteWhatsapp = "📝 *Nouvelle Note Ajoutée*\n\n";
+                        $texteWhatsapp .= "Élève : *{$eleveAlerte->nom_complet}*\n";
+                        $texteWhatsapp .= "Matière : *{$matiereAlerte->nom}*\n";
+                        $texteWhatsapp .= "Évaluation : *$messageType*\n";
+                        $texteWhatsapp .= "Note : *$valeurNote/20*\n\n";
+
+                        if ($declencherAlerte) {
+                            $texteWhatsapp .= "⚠️ *ATTENTION* : L'élève $raisonAlerte. Merci de suivre cela de près de votre côté.\n\n";
+                        }
+
+                        $texteWhatsapp .= "Connectez-vous à l'espace parent pour plus de détails.";
+
+                        try {
+                            \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                                'phone' => $eleveAlerte->repetiteur_whatsapp,
+                                'message' => $texteWhatsapp
+                            ]);
+                        } catch (\Exception $reqEx) {
+                            \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                        }
                     }
                 }
             }

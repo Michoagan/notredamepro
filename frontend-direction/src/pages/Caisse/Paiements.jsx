@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, CreditCard, Banknote, Download, Loader2, AlertCircle, X, Check, CheckCircle } from 'lucide-react';
-import { getPaiements, createPaiement, downloadReceiptPDF } from '../../services/caisse';
+import { getPaiements, createPaiement, getPaiementQrCode } from '../../services/caisse';
 import { getEleves } from '../../services/secretariat';
+import { generateReceiptPDF } from '../../utils/pdfGenerator';
 
 export default function Paiements() {
     const [transactions, setTransactions] = useState([]);
@@ -122,20 +123,18 @@ export default function Paiements() {
         }
     };
 
-    const handleDownloadReceipt = async (paiementId) => {
+    const handleDownloadReceipt = async (paiement) => {
         try {
-            const url = await downloadReceiptPDF(paiementId);
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Recu_Paiement_${paiementId}.pdf`); // Define filename
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // 1. Fetch QR Code from Backend
+            const qrResponse = await getPaiementQrCode(paiement.id);
+            const qrBase64 = qrResponse.qrCodeBase64;
 
-            // Optionally clean up
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            // 2. Generate PDF locally in React
+            generateReceiptPDF(paiement, 'scolarite', qrBase64);
+
         } catch (error) {
-            alert("Erreur lors du téléchargement du reçu.");
+            console.error("Erreur PDF:", error);
+            alert("Erreur lors de la génération du reçu.");
         }
     };
 
@@ -274,7 +273,7 @@ export default function Paiements() {
 
                                 <div className="flex flex-col w-full gap-3">
                                     <button
-                                        onClick={() => handleDownloadReceipt(paymentSuccessData.id)}
+                                        onClick={() => handleDownloadReceipt(paymentSuccessData)}
                                         className="flex justify-center items-center gap-2 w-full px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
                                     >
                                         <Download className="w-5 h-5" />

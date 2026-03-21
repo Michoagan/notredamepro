@@ -40,6 +40,21 @@ class CommuniqueController extends Controller
             'published_at' => now(),
         ]);
 
+        // Envoi des notifications selon la cible
+        $notification = new \App\Notifications\NouveauCommuniqueNotification($communique);
+
+        if (in_array($request->type, ['parents', 'general'])) {
+            $parents = \App\Models\Tuteur::all();
+            \Illuminate\Support\Facades\Notification::send($parents, $notification);
+        }
+
+        if (in_array($request->type, ['professeurs', 'general'])) {
+            $professeurs = \App\Models\Professeur::all();
+            \Illuminate\Support\Facades\Notification::send($professeurs, $notification);
+        }
+
+        // On peut aussi rajouter 'eleves' si on veut
+
         return response()->json([
             'success' => true,
             'communique' => $communique,

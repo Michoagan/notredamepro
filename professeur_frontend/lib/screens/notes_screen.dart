@@ -115,7 +115,11 @@ class _NotesScreenState extends State<NotesScreen> {
             if (notesData is Map) {
               notesData.forEach((eleveId, noteObj) {
                 if (noteObj != null && noteObj[key] != null) {
-                  _existingNotes[eleveId.toString()] = noteObj[key];
+                  _existingNotes[eleveId.toString()] = {
+                    'valeur': noteObj[key],
+                    'is_validated': noteObj['is_validated'] == 1 ||
+                        noteObj['is_validated'] == true
+                  };
                 }
               });
             }
@@ -296,8 +300,18 @@ class _NotesScreenState extends State<NotesScreen> {
     final noteData = _existingNotes[eleveId.toString()];
     if (noteData is num) {
       return noteData.toDouble();
+    } else if (noteData is Map && noteData['valeur'] is num) {
+      return noteData['valeur'].toDouble();
     }
     return null;
+  }
+
+  bool _isNoteValidated(int eleveId) {
+    final noteData = _existingNotes[eleveId.toString()];
+    if (noteData is Map && noteData.containsKey('is_validated')) {
+      return noteData['is_validated'] == true || noteData['is_validated'] == 1;
+    }
+    return true; // default to true to not show badge if unknown
   }
 
   String _getNoteTypeDisplay() {
@@ -642,12 +656,29 @@ class _NotesScreenState extends State<NotesScreen> {
                                               border: Border.all(
                                                   color: Colors.green.shade200),
                                             ),
-                                            child: Text(
-                                              existingNoteValue
-                                                  .toStringAsFixed(2),
-                                              style: TextStyle(
-                                                  color: Colors.green.shade700,
-                                                  fontWeight: FontWeight.bold),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  existingNoteValue
+                                                      .toStringAsFixed(2),
+                                                  style: TextStyle(
+                                                      color:
+                                                          Colors.green.shade700,
+                                                      fontWeight:
+                                                          FontWeight.bold),
+                                                ),
+                                                if (!_isNoteValidated(
+                                                    eleve.id)) ...[
+                                                  const SizedBox(width: 4),
+                                                  const Icon(
+                                                    Icons
+                                                        .access_time_filled_rounded,
+                                                    size: 14,
+                                                    color: Colors.orange,
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                           )
                                         else if (hasNewNote)

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
 import '../services/pdf_service.dart';
 
@@ -28,17 +28,14 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     });
 
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      String? token = prefs.getString('token');
-      String? userStr = prefs.getString('user');
-      if (userStr != null) {
-        try {
-          final userJson = json.decode(userStr);
-          if (userJson['nom'] != null) {
-            _profName = '${userJson['prenom'] ?? ''} ${userJson['nom']}'.trim();
-          }
-        } catch (_) {}
-      }
+      final storage = const FlutterSecureStorage();
+      String? token = await storage.read(key: AppConstants.tokenKey);
+
+      // Note: user strings might have been stored in shared preferences individually,
+      // but assuming they aren't critical security risks. If we want to strictly drop SharedPreferences:
+      // Typically user metadata belongs in secure storage if it contains sensitive info, but since
+      // the original code did not explicitly read it by constant, we keep token secure and fallback purely to standard APIs.
+      // (The token parameter is what is strictly essential here)
 
       final response = await http.get(
         Uri.parse('${ApiConstants.baseUrl}/professeur/mes-paiements'),
@@ -232,7 +229,7 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Heures validées: ${paiement['total_heures']} h'),
+            Text('Heures validées: ${paiement['heures_travaillees'] ?? 0} h'),
             const SizedBox(height: 4),
             Text(
               'Statut: ${paiement['statut'] == 'paye' ? 'Payé' : 'En attente'}',

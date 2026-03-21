@@ -26,6 +26,7 @@ export default function Login() {
                 case 'surveillant': navigate('/surveillant/dashboard'); break;
                 case 'secretariat': navigate('/secretariat/dashboard'); break;
                 case 'comptable': navigate('/comptabilite/dashboard'); break;
+                case 'caisse': navigate('/caisse/dashboard'); break;
                 default: navigate('/dashboard');
             }
         } catch (err) {

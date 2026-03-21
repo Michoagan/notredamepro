@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { getArticles } from '../../services/comptabilite';
-import { storeVente } from '../../services/caisse';
+import { storeVente, getVenteQrCode } from '../../services/caisse';
 import { getEleves } from '../../services/secretariat';
-import { Loader2, ShoppingCart, Search, User, Trash2, CheckCircle } from 'lucide-react';
+import { Loader2, ShoppingCart, Search, User, Trash2, CheckCircle, Download, FileText } from 'lucide-react';
+import { generateReceiptPDF } from '../../utils/pdfGenerator';
 
 export default function Ventes() {
     const [articles, setArticles] = useState([]);
@@ -18,6 +19,7 @@ export default function Ventes() {
     const [showStudentResults, setShowStudentResults] = useState(false);
 
     const [message, setMessage] = useState(null);
+    const [venteSuccessData, setVenteSuccessData] = useState(null);
 
     useEffect(() => {
         loadData();
@@ -112,8 +114,9 @@ export default function Ventes() {
         };
 
         try {
-            await storeVente(payload);
+            const response = await storeVente(payload);
             setMessage({ type: 'success', text: 'Vente enregistrée avec succès !' });
+            setVenteSuccessData(response.vente);
             setCart([]);
             setSelectedStudent(null);
             setClientName('');
@@ -122,6 +125,21 @@ export default function Ventes() {
             setMessage({ type: 'error', text: error.response?.data?.message || 'Erreur lors de la vente.' });
         } finally {
             setProcessing(false);
+        }
+    };
+
+    const handleDownloadReceipt = async (vente) => {
+        try {
+            // 1. Fetch QR Code from Backend
+            const qrResponse = await getVenteQrCode(vente.id);
+            const qrBase64 = qrResponse.qrCodeBase64;
+
+            // 2. Generate PDF locally in React
+            generateReceiptPDF(vente, 'vente', qrBase64);
+
+        } catch (error) {
+            console.error("Erreur PDF:", error);
+            alert("Erreur lors de la génération du reçu de vente.");
         }
     };
 
@@ -169,103 +187,133 @@ export default function Ventes() {
             <div className="w-full md:w-96 bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col">
                 <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center">
                     <ShoppingCart className="w-5 h-5 mr-2" />
-                    Panier
+                    {venteSuccessData ? 'Vente Réussie' : 'Panier'}
                 </h2>
 
-                {/* Client Selection */}
-                <div className="mb-4 relative">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Client (Élève ou Autre)</label>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Rechercher élève..."
-                            className="w-full p-2 pl-8 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={searchStudent}
-                            onChange={(e) => { setSearchStudent(e.target.value); setSelectedStudent(null); }}
-                        />
-                        <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-3" />
-                    </div>
+                {venteSuccessData ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+                        <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">Paiement Validé</h3>
+                        <p className="text-slate-600 mb-6">
+                            Réf: <span className="font-mono font-medium">{venteSuccessData.reference}</span>
+                        </p>
 
-                    {/* Autocomplete Results */}
-                    {showStudentResults && students.length > 0 && (
-                        <ul className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
-                            {students.map(student => (
-                                <li
-                                    key={student.id}
-                                    onClick={() => selectStudent(student)}
-                                    className="p-2 hover:bg-blue-50 cursor-pointer text-sm"
-                                >
-                                    <div className="font-medium text-slate-700">{student.nom} {student.prenom}</div>
-                                    <div className="text-xs text-slate-500">{student.classe?.nom || 'Sans classe'}</div>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                        <div className="flex flex-col w-full gap-3">
+                            <button
+                                onClick={() => handleDownloadReceipt(venteSuccessData)}
+                                className="flex justify-center items-center gap-2 w-full px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+                            >
+                                <Download className="w-5 h-5" />
+                                Télécharger le Reçu PDF
+                            </button>
 
-                    {!selectedStudent && (
-                        <input
-                            type="text"
-                            placeholder="Ou Nom du client externe"
-                            className="mt-2 w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={clientName}
-                            onChange={(e) => setClientName(e.target.value)}
-                        />
-                    )}
-
-                    {selectedStudent && (
-                        <div className="mt-2 p-2 bg-blue-50 text-blue-700 rounded-lg text-sm flex justify-between items-center">
-                            <div className="flex items-center">
-                                <User className="w-4 h-4 mr-2" />
-                                {selectedStudent.nom} {selectedStudent.prenom}
-                            </div>
-                            <button onClick={() => { setSelectedStudent(null); setSearchStudent(''); }} className="text-blue-400 hover:text-blue-600">&times;</button>
+                            <button
+                                onClick={() => setVenteSuccessData(null)}
+                                className="w-full px-4 py-3 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 transition font-medium border border-slate-200"
+                            >
+                                <ShoppingCart className="w-5 h-5 inline-block mr-2" />
+                                Nouvelle Vente
+                            </button>
                         </div>
-                    )}
-                </div>
-
-                {/* Cart Items */}
-                <div className="flex-1 overflow-y-auto space-y-2 mb-4">
-                    {cart.length === 0 ? (
-                        <div className="text-center text-slate-400 py-8">Panier vide</div>
-                    ) : (
-                        cart.map((item) => (
-                            <div key={item.article_id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
-                                <div className="flex-1">
-                                    <div className="text-sm font-medium text-slate-700">{item.designation}</div>
-                                    <div className="text-xs text-slate-500">{item.prix} F x {item.quantite}</div>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <button onClick={() => updateQuantity(item.article_id, -1)} className="w-6 h-6 bg-white border rounded text-slate-600 text-sm">-</button>
-                                    <span className="text-sm font-medium w-4 text-center">{item.quantite}</span>
-                                    <button onClick={() => updateQuantity(item.article_id, 1)} className="w-6 h-6 bg-white border rounded text-slate-600 text-sm">+</button>
-                                    <button onClick={() => removeFromCart(item.article_id)} className="ml-1 text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-
-                {/* Footer */}
-                <div className="pt-4 border-t border-slate-100">
-                    <div className="flex justify-between items-center mb-4 text-lg font-bold text-slate-800">
-                        <span>Total</span>
-                        <span>{cartTotal.toLocaleString()} FCFA</span>
                     </div>
+                ) : (
+                    <>
+                        {/* Client Selection */}
+                        <div className="mb-4 relative">
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Client (Élève ou Autre)</label>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Rechercher élève..."
+                                    className="w-full p-2 pl-8 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={searchStudent}
+                                    onChange={(e) => { setSearchStudent(e.target.value); setSelectedStudent(null); }}
+                                />
+                                <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-3" />
+                            </div>
 
-                    {message && (
-                        <div className={`mb-4 p-2 rounded text-sm text-center ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {message.text}
+                            {/* Autocomplete Results */}
+                            {showStudentResults && students.length > 0 && (
+                                <ul className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
+                                    {students.map(student => (
+                                        <li
+                                            key={student.id}
+                                            onClick={() => selectStudent(student)}
+                                            className="p-2 hover:bg-blue-50 cursor-pointer text-sm"
+                                        >
+                                            <div className="font-medium text-slate-700">{student.nom} {student.prenom}</div>
+                                            <div className="text-xs text-slate-500">{student.classe?.nom || 'Sans classe'}</div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+
+                            {!selectedStudent && (
+                                <input
+                                    type="text"
+                                    placeholder="Ou Nom du client externe"
+                                    className="mt-2 w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={clientName}
+                                    onChange={(e) => setClientName(e.target.value)}
+                                />
+                            )}
+
+                            {selectedStudent && (
+                                <div className="mt-2 p-2 bg-blue-50 text-blue-700 rounded-lg text-sm flex justify-between items-center">
+                                    <div className="flex items-center">
+                                        <User className="w-4 h-4 mr-2" />
+                                        {selectedStudent.nom} {selectedStudent.prenom}
+                                    </div>
+                                    <button onClick={() => { setSelectedStudent(null); setSearchStudent(''); }} className="text-blue-400 hover:text-blue-600">&times;</button>
+                                </div>
+                            )}
                         </div>
-                    )}
 
-                    <button
-                        onClick={handleCheckout}
-                        disabled={cart.length === 0 || processing}
-                        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none flex justify-center items-center"
-                    >
-                        {processing ? <Loader2 className="animate-spin w-5 h-5" /> : <><CheckCircle className="w-5 h-5 mr-2" /> Valider la Vente</>}
-                    </button>
-                </div>
+                        {/* Cart Items */}
+                        <div className="flex-1 overflow-y-auto space-y-2 mb-4">
+                            {cart.length === 0 ? (
+                                <div className="text-center text-slate-400 py-8">Panier vide</div>
+                            ) : (
+                                cart.map((item) => (
+                                    <div key={item.article_id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
+                                        <div className="flex-1">
+                                            <div className="text-sm font-medium text-slate-700">{item.designation}</div>
+                                            <div className="text-xs text-slate-500">{item.prix} F x {item.quantite}</div>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <button onClick={() => updateQuantity(item.article_id, -1)} className="w-6 h-6 bg-white border rounded text-slate-600 text-sm">-</button>
+                                            <span className="text-sm font-medium w-4 text-center">{item.quantite}</span>
+                                            <button onClick={() => updateQuantity(item.article_id, 1)} className="w-6 h-6 bg-white border rounded text-slate-600 text-sm">+</button>
+                                            <button onClick={() => removeFromCart(item.article_id)} className="ml-1 text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="pt-4 border-t border-slate-100">
+                            <div className="flex justify-between items-center mb-4 text-lg font-bold text-slate-800">
+                                <span>Total</span>
+                                <span>{cartTotal.toLocaleString()} FCFA</span>
+                            </div>
+
+                            {message && (
+                                <div className={`mb-4 p-2 rounded text-sm text-center ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {message.text}
+                                </div>
+                            )}
+
+                            <button
+                                onClick={handleCheckout}
+                                disabled={cart.length === 0 || processing}
+                                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none flex justify-center items-center"
+                            >
+                                {processing ? <Loader2 className="animate-spin w-5 h-5" /> : <><CheckCircle className="w-5 h-5 mr-2" /> Valider la Vente</>}
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

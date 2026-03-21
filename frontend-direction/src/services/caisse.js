@@ -22,6 +22,11 @@ export const createPaiement = async (data) => {
     return response.data;
 };
 
+export const getPaiementQrCode = async (paiementId) => {
+    const response = await api.get(`${CAISSE_API}/paiements/${paiementId}/qrcode`);
+    return response.data;
+};
+
 export const downloadReceiptPDF = async (paiementId) => {
     const response = await api.get(`${CAISSE_API}/paiements/${paiementId}/receipt`, {
         responseType: 'blob'
@@ -36,5 +41,20 @@ export const downloadReceiptPDF = async (paiementId) => {
 // Ventes
 export const storeVente = async (data) => {
     const response = await api.post(`${CAISSE_API}/ventes`, data);
+    return response.data;
+};
+
+export const downloadVenteReceiptPDF = async (venteId) => {
+    const response = await api.get(`${CAISSE_API}/ventes/${venteId}/receipt`, {
+        responseType: 'blob'
+    });
+
+    const file = new Blob([response.data], { type: 'application/pdf' });
+    const fileURL = URL.createObjectURL(file);
+    return fileURL;
+};
+
+export const getVenteQrCode = async (venteId) => {
+    const response = await api.get(`${CAISSE_API}/ventes/${venteId}/qrcode`);
     return response.data;
 };

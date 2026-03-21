@@ -41,7 +41,7 @@ class _ConvocationsScreenState extends State<ConvocationsScreen> {
     if (mounted) {
       if (data != null && data['success'] == true) {
         setState(() {
-          _convocations = data['sessions'] ?? [];
+          _convocations = data['convocations'] ?? data['sessions'] ?? [];
           _isLoading = false;
         });
       } else {
@@ -150,6 +150,8 @@ class _ConvocationsScreenState extends State<ConvocationsScreen> {
   Widget _buildConvocationCard(Map<String, dynamic> session) {
     final bool isDownloadable = session['is_downloadable'] ?? false;
     final int tempsRestant = session['temps_restant_jours'] ?? 0;
+    final bool isLocked = session['is_locked'] ?? false;
+    final String? messageBlocage = session['message_blocage'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -188,17 +190,19 @@ class _ConvocationsScreenState extends State<ConvocationsScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isDownloadable
-                        ? AppTheme.success.withOpacity(0.1)
-                        : AppTheme.warning.withOpacity(0.1),
+                    color: isLocked 
+                        ? Colors.red.withOpacity(0.1)
+                        : (isDownloadable
+                            ? AppTheme.success.withOpacity(0.1)
+                            : AppTheme.warning.withOpacity(0.1)),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    isDownloadable ? 'Disponible' : 'Bientôt',
+                    isLocked ? 'Bloqué' : (isDownloadable ? 'Disponible' : 'Bientôt'),
                     style: TextStyle(
-                      color: isDownloadable
-                          ? AppTheme.success
-                          : AppTheme.warning,
+                      color: isLocked
+                          ? Colors.red
+                          : (isDownloadable ? AppTheme.success : AppTheme.warning),
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -207,21 +211,48 @@ class _ConvocationsScreenState extends State<ConvocationsScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(
-                  Icons.date_range_rounded,
-                  size: 16,
-                  color: AppTheme.textSecondary,
+            if (!isLocked)
+              Row(
+                children: [
+                  const Icon(
+                    Icons.date_range_rounded,
+                    size: 16,
+                    color: AppTheme.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Début : ${session['date_debut'] ?? 'Inconnue'}',
+                    style: const TextStyle(color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            if (isLocked)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'Début : ${session['date_debut'] ?? 'Inconnue'}',
-                  style: const TextStyle(color: AppTheme.textSecondary),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_rounded, color: Colors.red, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        messageBlocage ?? 'Pas de convocation, scolarité non à jour.',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            if (!isDownloadable && tempsRestant > 0)
+              )
+            else if (!isDownloadable && tempsRestant > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 8.0),
                 child: Row(

@@ -1,4 +1,4 @@
-﻿class Eleve {
+class Eleve {
   final int id;
   final String nom;
   final String prenom;
@@ -8,6 +8,7 @@
   final double? tauxPresence;
   final double? soldeRestant;
   final List<dynamic>? recentNotes;
+  final String? repetiteurWhatsapp;
 
   Eleve({
     required this.id,
@@ -19,6 +20,7 @@
     this.tauxPresence,
     this.soldeRestant,
     this.recentNotes,
+    this.repetiteurWhatsapp,
   });
 
   factory Eleve.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@
           ? _parseDouble(json['solde_restant'])
           : null,
       recentNotes: json['recent_notes'] as List<dynamic>?,
+      repetiteurWhatsapp: json['repetiteur_whatsapp'],
     );
   }
 
@@ -57,6 +60,7 @@
       'taux_presence': tauxPresence,
       'solde_restant': soldeRestant,
       'recent_notes': recentNotes,
+      'repetiteur_whatsapp': repetiteurWhatsapp,
     };
   }
 }

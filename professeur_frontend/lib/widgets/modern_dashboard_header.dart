@@ -84,14 +84,6 @@ class ModernDashboardHeader extends StatelessWidget {
               Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.settings_outlined,
-                        color: Colors.white, size: 26),
-                    onPressed: onSettingsPressed,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 16),
-                  IconButton(
                     icon: const Icon(Icons.notifications_outlined,
                         color: Colors.white, size: 26),
                     onPressed: onNotificationPressed,

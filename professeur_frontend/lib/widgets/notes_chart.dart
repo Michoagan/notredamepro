@@ -15,25 +15,35 @@ class NotesChart extends StatelessWidget {
       return const Center(child: Text("Pas de données à afficher"));
     }
 
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          horizontalInterval: 5,
-          verticalInterval: 1,
-          getDrawingHorizontalLine: (value) {
-            return FlLine(
-              color: Colors.grey.withOpacity(0.1),
-              strokeWidth: 1,
-            );
-          },
-          getDrawingVerticalLine: (value) {
-            return FlLine(
-              color: Colors.grey.withOpacity(0.1),
-              strokeWidth: 1,
-            );
-          },
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: 20,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (group) => Colors.blueGrey,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              final label = labels[group.x];
+              final dataset = datasets[rodIndex];
+              return BarTooltipItem(
+                '$label\n',
+                const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+                children: [
+                  TextSpan(
+                    text: '${dataset.label}: ${rod.toY.round()}',
+                    style: TextStyle(
+                      color: _parseColor(dataset.borderColor),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
         titlesData: FlTitlesData(
           show: true,
@@ -49,8 +59,6 @@ class NotesChart extends StatelessWidget {
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index >= 0 && index < labels.length) {
-                  // Only show label if it fits, simple logic: show all for now
-                  // For many labels, we might need to skip some
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
@@ -89,54 +97,45 @@ class NotesChart extends StatelessWidget {
           show: true,
           border: Border.all(color: const Color(0xff37434d).withOpacity(0.1)),
         ),
-        minX: 0,
-        maxX: (labels.length - 1).toDouble(),
-        minY: 0,
-        maxY: 20,
-        lineBarsData: datasets.map((dataset) {
-          return LineChartBarData(
-            spots: dataset.data.asMap().entries.map((e) {
-              return FlSpot(e.key.toDouble(), e.value);
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: true,
+          horizontalInterval: 5,
+          verticalInterval: 1,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: Colors.grey.withOpacity(0.1),
+              strokeWidth: 1,
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey.withOpacity(0.1),
+              strokeWidth: 1,
+            );
+          },
+        ),
+        barGroups: labels.asMap().entries.map((entry) {
+          final index = entry.key;
+          return BarChartGroupData(
+            x: index,
+            barRods: datasets.asMap().entries.map((datasetEntry) {
+              final dataset = datasetEntry.value;
+              // Ensure we don't access out of bounds if dataset has fewer points
+              final yValue =
+                  index < dataset.data.length ? dataset.data[index] : 0.0;
+              return BarChartRodData(
+                toY: yValue,
+                color: _parseColor(dataset.borderColor),
+                width: datasets.length > 2
+                    ? 8
+                    : 16, // Adjust width based on number of datasets
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(4)),
+              );
             }).toList(),
-            isCurved: true,
-            color: _parseColor(dataset.borderColor),
-            barWidth: 3,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: _parseColor(dataset.borderColor).withOpacity(0.1),
-            ),
           );
         }).toList(),
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
-              return touchedBarSpots.map((barSpot) {
-                final flSpot = barSpot;
-                final datasetIndex = barSpot.barIndex;
-                final dataset = datasets[datasetIndex];
-
-                return LineTooltipItem(
-                  '${dataset.label}\n',
-                  const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: flSpot.y.toString(),
-                      style: TextStyle(
-                        color: _parseColor(dataset.borderColor),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                );
-              }).toList();
-            },
-          ),
-        ),
       ),
     );
   }

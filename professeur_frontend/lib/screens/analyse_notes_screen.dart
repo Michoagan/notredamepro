@@ -199,34 +199,35 @@ class _AnalyseNotesScreenState extends State<AnalyseNotesScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _hasError
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline,
-                          size: 64, color: AppTheme.error),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _refreshData,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Réessayer'),
-                      ),
-                    ],
+      body: Stack(
+        children: [
+          if (_hasError)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline,
+                      size: 64, color: AppTheme.error),
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
                   ),
-                )
-              : SingleChildScrollView(
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _refreshData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Réessayer'),
+                  ),
+                ],
+              ),
+            )
+          else
+            SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,6 +420,11 @@ class _AnalyseNotesScreenState extends State<AnalyseNotesScreen> {
                           ],
                         ),
 
+                      // Section Notes d'examens
+                      if (_noteAnalysis != null &&
+                          _noteAnalysis!.notesExamens != null)
+                        _buildNotesExamensList(_noteAnalysis!.notesExamens!),
+
                       // Message si aucune classe n'est sélectionnée
                       if (_classes.isEmpty && !_isLoading)
                         const Center(
@@ -441,6 +447,134 @@ class _AnalyseNotesScreenState extends State<AnalyseNotesScreen> {
                     ],
                   ),
                 ),
+          if (_isLoading)
+            Positioned.fill(
+              child: Container(
+                color: Colors.white.withOpacity(0.4),
+                child: const Center(
+                  child: CircularProgressIndicator(color: AppTheme.primary),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotesExamensList(Map<String, dynamic> notesExamens) {
+    if (notesExamens.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text(
+          'Notes des Examens',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.primary,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: notesExamens.keys.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 16),
+          itemBuilder: (context, index) {
+            final typeExamen = notesExamens.keys.elementAt(index);
+            final notes = notesExamens[typeExamen] as List<dynamic>;
+
+            return Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, color: AppTheme.accent),
+                        const SizedBox(width: 8),
+                        Text(
+                          typeExamen,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ...notes.map((noteData) {
+                      final nom = noteData['nom'] ?? 'Inconnu';
+                      final prenom = noteData['prenom'] ?? '';
+                      final matiere = noteData['matiere'] ?? '';
+                      final valeur =
+                          double.tryParse(noteData['valeur'].toString());
+                      final annee = noteData['annee_scolaire'] ?? '';
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '$nom $prenom',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    '$matiere ${annee.isNotEmpty ? "($annee)" : ""}',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (valeur != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: valeur >= 10
+                                      ? AppTheme.success.withOpacity(0.1)
+                                      : AppTheme.error.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '$valeur / 20',
+                                  style: TextStyle(
+                                    color: valeur >= 10
+                                        ? AppTheme.success
+                                        : AppTheme.error,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }).toList()
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

@@ -31,6 +31,7 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
   int _dureeCours = 1;
   late TimeOfDay _heureDebut;
   String _notionCours = '';
+  String _travailAFaire = '';
   bool _isSubmitting = false;
 
   @override
@@ -203,6 +204,7 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
         dureeCours: _dureeCours,
         heureDebut: _heureDebut.format(context),
         notionCours: _notionCours,
+        travailAFaire: _travailAFaire,
       );
 
       if (result['success'] == true) {
@@ -212,6 +214,7 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
           PremiumFeedback.showSuccess(context, message: 'Saisie enregistrée !');
           // Reset specific fields for next time
           _notionCours = '';
+          _travailAFaire = '';
         }
       } else {
         throw Exception(result['message']);
@@ -476,6 +479,23 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
                         onSaved: (v) => _notionCours = v!,
                       ),
 
+                      const SizedBox(height: 20),
+
+                      const Text('Travail à faire (Exercice)',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        initialValue: _travailAFaire,
+                        decoration: InputDecoration(
+                          hintText: 'Facultatif: ex. Faire les exercices 1 et 2',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        maxLines: 2,
+                        onSaved: (v) => _travailAFaire = v ?? '',
+                      ),
+
                       const SizedBox(height: 30),
 
                       // Submit Button
@@ -576,7 +596,12 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
                     ..._recentEntries.map((e) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: CahierEntryCard(
-                              entry: e, classeNom: e.classe?.nom),
+                              entry: e, 
+                              classeNom: e.classe?.nom,
+                              onMarquerNonFait: e.travailAFaire.isNotEmpty ? () {
+                                _showMarquerNonFaitDialog(e);
+                              } : null,
+                          ),
                         )),
 
                   const SizedBox(height: 80), // Space for FAB
@@ -584,6 +609,95 @@ class _CahierTexteScreenState extends State<CahierTexteScreen> {
               ),
             ),
     );
+  }
+
+  void _showMarquerNonFaitDialog(CahierTexte entry) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const Center(child: CircularProgressIndicator());
+      },
+    );
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final eleves = await apiService.getElevesByClasse(entry.classeId);
+      Navigator.pop(context); // Close loading
+
+      List<int> selectedEleves = List<int>.from(entry.elevesNonFaitsIds);
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Élèves n\'ayant pas fait l\'exercice'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: eleves.length,
+                    itemBuilder: (context, index) {
+                      final eleve = eleves[index];
+                      return CheckboxListTile(
+                        title: Text('${eleve.nom} ${eleve.prenom}'),
+                        value: selectedEleves.contains(eleve.id),
+                        onChanged: (bool? value) {
+                          setState(() {
+                            if (value == true) {
+                              selectedEleves.add(eleve.id);
+                            } else {
+                              selectedEleves.remove(eleve.id);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      Navigator.pop(context); // close dialog
+                      // Show loading
+                      showDialog(
+                        context: this.context,
+                        barrierDismissible: false,
+                        builder: (c) => const Center(child: CircularProgressIndicator()),
+                      );
+
+                      final result = await apiService.markExerciceNonFait(entry.id, selectedEleves);
+                      Navigator.pop(this.context); // close loading
+
+                      if (result['success'] == true) {
+                        PremiumFeedback.showSuccess(this.context, message: 'Statut mis à jour');
+                        _loadRecentEntries();
+                      } else {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text(result['message'] ?? 'Erreur'), backgroundColor: AppTheme.error),
+                        );
+                      }
+                    },
+                    child: const Text('Enregistrer'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      Navigator.pop(context); // Close loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e'), backgroundColor: AppTheme.error),
+      );
+    }
   }
 
   Widget _buildStatHeader() {

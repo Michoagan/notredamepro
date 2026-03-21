@@ -26,41 +26,81 @@ class ComptabiliteController extends Controller
         $dateStart = $request->input('start_date', now()->startOfMonth()->toDateString());
         $dateEnd = $request->input('end_date', now()->endOfMonth()->toDateString());
 
-        // 1. Entrées
-        // Contributions (Paiements scolarité validés)
+        // --- 1. BILAN FINANCIER (Trésorerie) ---
+        
+        // Entrées
         $totalScolarite = Paiement::where('statut', 'success')
             ->whereBetween('date_paiement', [$dateStart, $dateEnd])
             ->sum('montant');
 
-        // Ventes (Autres recettes)
         $totalVentes = Vente::whereBetween('date_vente', [$dateStart, $dateEnd])
             ->sum('montant_total');
 
         $totalEntrees = $totalScolarite + $totalVentes;
 
-        // 2. Sorties
-        // Dépenses
-        $totalDepenses = Depense::whereBetween('date_depense', [$dateStart, $dateEnd])
+        // Sorties
+        // Assuming Salaires are already recorded as Depense in this system (as per payerSalaire method)
+        // To be precise on the analytical breakdown, we will sum them separately if needed, 
+        // but since payerSalaire creates a Depense with categorie='salaire', we can filter by category!
+        $totalSalaires = Depense::whereBetween('date_depense', [$dateStart, $dateEnd])
+            ->where('categorie', 'salaire')
             ->sum('montant');
 
-        // 3. Solde
-        $solde = $totalEntrees - $totalDepenses;
+        $totalDepensesGenerales = Depense::whereBetween('date_depense', [$dateStart, $dateEnd])
+            ->where('categorie', '!=', 'salaire')
+            ->sum('montant');
+
+        $totalSorties = $totalSalaires + $totalDepensesGenerales;
+        
+        $soldeNet = $totalEntrees - $totalSorties;
+
+        // --- 2. BILAN INVENTAIRE (Patrimoine) ---
+        
+        // Valeur Totale du Stock Physique
+        $valeurStock = Article::where('type', 'physique')
+            ->selectRaw('SUM(stock_actuel * prix_unitaire) as total')
+            ->value('total') ?? 0;
+
+        // Nombre d'articles en alerte (stock <= stock_min)
+        $alertesStock = Article::where('type', 'physique')
+            ->whereRaw('stock_actuel <= stock_min')
+            ->count();
+
+        // Mouvements du mois
+        $mouvementsEntrees = MouvementStock::whereBetween('created_at', [$dateStart, clone(now()->parse($dateEnd))->endOfDay()])
+            ->whereIn('type', ['entree', 'correction']) // correction is often positive
+            ->count();
+
+        $mouvementsSorties = MouvementStock::whereBetween('created_at', [$dateStart, clone(now()->parse($dateEnd))->endOfDay()])
+            ->where('type', 'vente')
+            ->count();
 
         return response()->json([
             'period' => [
                 'start' => $dateStart,
                 'end' => $dateEnd
             ],
-            'entrees' => [
-                'scolarite' => $totalScolarite,
-                'ventes' => $totalVentes,
-                'total' => $totalEntrees
+            'financier' => [
+                'entrees' => [
+                    'scolarite' => $totalScolarite,
+                    'ventes' => $totalVentes,
+                    'total' => $totalEntrees
+                ],
+                'sorties' => [
+                    'salaires' => $totalSalaires,
+                    'depenses_generales' => $totalDepensesGenerales,
+                    'total' => $totalSorties
+                ],
+                'solde_net' => $soldeNet
             ],
-            'sorties' => [
-                'depenses' => $totalDepenses,
-                'total' => $totalDepenses
-            ],
-            'solde' => $solde
+            'inventaire' => [
+                'valeur_totale' => (float) $valeurStock,
+                'alertes_rupture' => $alertesStock,
+                'mouvements' => [
+                    'entrees' => $mouvementsEntrees,
+                    'sorties' => $mouvementsSorties
+                ]
+            ]
         ]);
     }
 
@@ -186,9 +226,9 @@ class ComptabiliteController extends Controller
             'date_generation' => now()->format('d/m/Y H:i:s')
         ]);
         
-        $filename = "recu_paiement_{$paiement->id}_{$paiement->eleve->nom}.pdf";
-
-        return $pdf->download($filename);
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', "inline; filename=\"$filename\"");
     }
 
     /**
@@ -314,7 +354,7 @@ class ComptabiliteController extends Controller
         $mois = $request->query('mois', now()->month);
         $annee = $request->query('annee', now()->year);
 
-        $salaires = \App\Models\Salaire::with('professeur')
+        $salaires = \App\Models\Salaire::with(['professeur', 'directionUser'])
             ->where('mois', $mois)
             ->where('annee', $annee)
             ->get();
@@ -324,7 +364,7 @@ class ComptabiliteController extends Controller
 
     /**
      * Generer les salaires pour un mois/annee specifique.
-     * Calcule le total d'heures base sur l'emploi du temps ou presence.
+     * Calcule le total d'heures base sur l'emploi du temps ou presence pour les profs, et le salaire de base pour la direction.
      */
     public function generateSalaires(Request $request)
     {
@@ -336,11 +376,11 @@ class ComptabiliteController extends Controller
         $mois = $request->mois;
         $annee = $request->annee;
 
-        $professeurs = \App\Models\Professeur::all();
         $generated = 0;
 
+        // 1. Générer pour les Professeurs
+        $professeurs = \App\Models\Professeur::all();
         foreach ($professeurs as $prof) {
-            // Check if already created
             $exists = \App\Models\Salaire::where('professeur_id', $prof->id)
                 ->where('mois', $mois)
                 ->where('annee', $annee)
@@ -348,10 +388,8 @@ class ComptabiliteController extends Controller
 
             if ($exists) continue;
 
-            // Simplified logic: Assume 100 hours of work normally if full time, or sum of presences
-            // Here we use a generic placeholder value per teacher or their `taux_horaire`
             $heures = 120; // Example static 120 hours
-            $taux = $prof->taux_horaire ?? 5000; // default 5000 F CFA/h if null
+            $taux = $prof->taux_horaire ?? 5000;
             $base = $heures * $taux;
 
             \App\Models\Salaire::create([
@@ -369,9 +407,69 @@ class ComptabiliteController extends Controller
             $generated++;
         }
 
+        // 2. Générer pour le Personnel de Direction et Agents
+        $personnel = \App\Models\Direction::where('is_active', true)->get();
+        foreach ($personnel as $agent) {
+            $exists = \App\Models\Salaire::where('direction_user_id', $agent->id)
+                ->where('mois', $mois)
+                ->where('annee', $annee)
+                ->exists();
+
+            if ($exists) continue;
+
+            $base = $agent->salaire_base ?? 0;
+
+            \App\Models\Salaire::create([
+                'direction_user_id' => $agent->id,
+                'mois' => $mois,
+                'annee' => $annee,
+                'heures_travaillees' => 0, 
+                'taux_horaire' => 0,
+                'montant_base' => $base,
+                'primes' => 0,
+                'retenues' => 0,
+                'net_a_payer' => $base,
+                'statut' => 'en_attente' // L'édition des primes se fera avant paiement
+            ]);
+            $generated++;
+        }
+
         return response()->json([
             'success' => true,
             'message' => "$generated fiche(s) de salaire générée(s) pour $mois/$annee."
+        ]);
+    }
+
+    /**
+     * Mettre à jour un salaire (primes, retenues)
+     */
+    public function updateSalaire(Request $request, $id)
+    {
+        $request->validate([
+            'primes' => 'required|numeric|min:0',
+            'retenues' => 'required|numeric|min:0',
+        ]);
+
+        $salaire = \App\Models\Salaire::findOrFail($id);
+
+        if ($salaire->statut === 'paye') {
+            return response()->json(['success' => false, 'message' => 'Impossible de modifier un salaire déjà payé.'], 400);
+        }
+
+        $primes = $request->primes;
+        $retenues = $request->retenues;
+        $net = $salaire->montant_base + $primes - $retenues;
+
+        $salaire->update([
+            'primes' => $primes,
+            'retenues' => $retenues,
+            'net_a_payer' => $net
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Salaire mis à jour avec succès.',
+            'salaire' => $salaire
         ]);
     }
 
@@ -386,9 +484,13 @@ class ComptabiliteController extends Controller
             return response()->json(['success' => false, 'message' => 'Déjà payé.'], 400);
         }
 
+        $isProf = $salaire->professeur_id !== null;
+        $employe = $isProf ? $salaire->professeur : $salaire->directionUser;
+        $nom = $employe ? $employe->first_name . ' ' . $employe->last_name : 'Anonyme';
+
         // Creer automatiquement la depense correspondante
         Depense::create([
-            'motif' => 'Paiement Salaire - ' . $salaire->professeur->first_name . ' ' . $salaire->professeur->last_name . ' (' . $salaire->mois . '/' . $salaire->annee . ')',
+            'motif' => 'Paiement Salaire - ' . $nom . ' (' . $salaire->mois . '/' . $salaire->annee . ')',
             'montant' => $salaire->net_a_payer,
             'categorie' => 'salaire',
             'date_depense' => now(),
@@ -404,5 +506,23 @@ class ComptabiliteController extends Controller
             'success' => true,
             'message' => 'Salaire payé avec succès et Dépense enregistrée.'
         ]);
+    }
+
+    /**
+     * Download the PDF Payslip.
+     */
+    public function downloadFichePaie($id)
+    {
+        $salaire = \App\Models\Salaire::with(['professeur', 'directionUser'])->findOrFail($id);
+
+        $pdf = Pdf::loadView('pdf.fiche_paie', [
+            'salaire' => $salaire
+        ]);
+        
+        $employe = $salaire->professeur_id !== null ? $salaire->professeur : $salaire->directionUser;
+        $nom = $employe ? str_replace(' ', '_', $employe->last_name . '_' . $employe->first_name) : 'Anonyme';
+        $filename = "fiche_paie_{$salaire->mois}_{$salaire->annee}_{$nom}.pdf";
+
+        return $pdf->download($filename);
     }
 }

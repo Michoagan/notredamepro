@@ -133,6 +133,30 @@ class SecretaireController extends Controller
             $evenement->classes()->sync($request->classes);
         }
 
+        // Notification d'événement
+        $notification = new \App\Notifications\NouvelEvenementNotification($evenement);
+
+        if ($evenement->pour_tous) {
+            $parents = \App\Models\Tuteur::all();
+            $professeurs = \App\Models\Professeur::all();
+            
+            \Illuminate\Support\Facades\Notification::send($parents, $notification);
+            \Illuminate\Support\Facades\Notification::send($professeurs, $notification);
+        } else {
+            // Uniquement pour les classes sélectionnées
+            if ($request->has('classes')) {
+                $eleves = \App\Models\Eleve::whereIn('classe_id', $request->classes)->get();
+                $parentsIds = $eleves->pluck('tuteur_id')->filter()->unique();
+                $parents = \App\Models\Tuteur::whereIn('id', $parentsIds)->get();
+                \Illuminate\Support\Facades\Notification::send($parents, $notification);
+
+                $professeurs = \App\Models\Professeur::whereHas('classes', function($q) use ($request) {
+                    $q->whereIn('classes.id', $request->classes);
+                })->get();
+                \Illuminate\Support\Facades\Notification::send($professeurs, $notification);
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Événement créé avec succès',

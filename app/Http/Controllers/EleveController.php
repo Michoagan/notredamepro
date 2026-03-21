@@ -400,4 +400,96 @@ public function edit(Eleve $eleve)
             ], 500);
         }
     }
+
+    public function getAnciennesEpreuves(Request $request)
+    {
+        $eleve = $request->user();
+        if (!$eleve) {
+            return response()->json(['error' => 'Non autorisé'], 401);
+        }
+
+        $epreuves = \App\Models\AncienneEpreuve::with('matiere')
+            ->where('classe_id', $eleve->classe_id)
+            ->latest()
+            ->get();
+
+        return response()->json($epreuves);
+    }
+
+    public function getNotes(Request $request)
+    {
+        $eleve = $request->user();
+        
+        if (!$eleve) {
+            return response()->json(['error' => 'Non autorisé'], 401);
+        }
+
+        $notesRaw = \App\Models\Note::with('matiere')
+            ->where('eleve_id', $eleve->id)
+            ->get();
+            
+        // We can format these similar to how Tuteurs see them
+        $notesParTrimestre = [];
+        for ($i = 1; $i <= 3; $i++) {
+            $notesTrims = $notesRaw->where('trimestre', $i)->values();
+            if ($notesTrims->isNotEmpty()) {
+                $notesParTrimestre[] = [
+                    'trimestre' => $i,
+                    'matieres' => $notesTrims->map(function($n) {
+                        return [
+                            'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
+                            'interros' => array_values(array_filter([
+                                ['valeur' => $n->premier_interro, 'is_validated' => $n->is_validated], 
+                                ['valeur' => $n->deuxieme_interro, 'is_validated' => $n->is_validated], 
+                                ['valeur' => $n->troisieme_interro, 'is_validated' => $n->is_validated], 
+                                ['valeur' => $n->quatrieme_interro, 'is_validated' => $n->is_validated]
+                            ], function($item) { return !is_null($item['valeur']); })),
+                            'devoirs' => array_values(array_filter([
+                                ['valeur' => $n->premier_devoir, 'is_validated' => $n->is_validated], 
+                                ['valeur' => $n->deuxieme_devoir, 'is_validated' => $n->is_validated]
+                            ], function($item) { return !is_null($item['valeur']); })),
+                        ];
+                    })
+                ];
+            }
+        }
+
+        $notesExamens = \App\Models\NoteExamen::where('eleve_id', $eleve->id)
+            ->with(['matiere'])
+            ->orderBy('annee_scolaire', 'desc')
+            ->get()
+            ->groupBy('type_examen')
+            ->map(function ($group) {
+                return $group->map(function ($n) {
+                    return [
+                        'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
+                        'valeur' => $n->valeur,
+                        'annee_scolaire' => $n->annee_scolaire,
+                    ];
+                })->values();
+            });
+            
+        return response()->json([
+            'notes_par_trimestre' => $notesParTrimestre,
+            'notes_examens' => $notesExamens
+        ]);
+    }
+
+    public function getExercices(Request $request)
+    {
+        $eleve = $request->user();
+        
+        if (!$eleve) {
+            return response()->json(['error' => 'Non autorisé'], 401);
+        }
+
+        $exercices = \App\Models\CahierTexte::with('matiere')
+            ->where('classe_id', $eleve->classe_id)
+            ->whereNotNull('travail_a_faire')
+            ->where('travail_a_faire', '!=', '')
+            ->orderBy('date_cours', 'desc')
+            ->get();
+
+        return response()->json($exercices);
+    }
 }

@@ -352,6 +352,16 @@ class PaiementController extends Controller
                 Log::error('Erreur lors de l\'envoi du reçu par email: ' . $e->getMessage());
             }
         }
+
+        // --- ENVOI DE LA NOTIFICATION PUSH FIREBASE AUX PARENTS ---
+        try {
+            $tuteurs = $paiement->eleve->tuteurs;
+            if ($tuteurs && $tuteurs->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\PaiementReussiNotification($paiement));
+            }
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de l\'envoi de la Push Notification Paiement: ' . $e->getMessage());
+        }
     }
 
     public function generateReceipt($id)
@@ -394,9 +404,9 @@ class PaiementController extends Controller
             'date_generation' => now()->format('d/m/Y H:i:s')
         ]);
 
-        $filename = "recu_paiement_{$paiement->id}_{$paiement->eleve->nom}.pdf";
-
-        return $pdf->download($filename);
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', "inline; filename=\"$filename\"");
     }
 
     // Méthode pour vérifier manuellement le statut d'un paiement

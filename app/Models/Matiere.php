@@ -114,8 +114,18 @@ class Matiere extends Model
         return $this->professeurs_count < $this->professeurs_max;
     }
 
-     public function presences()
+    public function presences()
     {
         return $this->hasMany(Presence::class, 'cours');
+    }
+
+    public function anciennesEpreuves()
+    {
+        return $this->hasMany(AncienneEpreuve::class);
+    }
+
+    public function notesExamens()
+    {
+        return $this->hasMany(NoteExamen::class);
     }
 }

@@ -25,8 +25,19 @@ class Eleve extends Authenticatable
         'email',
         'nom_parent',
         'telephone_parent',
+        'repetiteur_whatsapp',
         'photo',
         'classe_id',
+        'password',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'password',
     ];
 
     protected $casts = [
@@ -152,5 +163,10 @@ class Eleve extends Authenticatable
             ->sum('montant');
 
         return max(0, $contribution->montant_total - $totalPaye);
+    }
+
+    public function notesExamens()
+    {
+        return $this->hasMany(NoteExamen::class);
     }
 }

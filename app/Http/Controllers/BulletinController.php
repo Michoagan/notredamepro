@@ -62,6 +62,15 @@ class BulletinController extends Controller
                         ->where('trimestre', $trimestre)
                         ->with('matiere')
                         ->get();
+                        
+            // Attachement du rang pour chaque matière spécifique
+            foreach ($notes as $note) {
+                if ($note->moyenne_trimestrielle) {
+                    $note->rang_matiere = $this->calculerRangMatiere($eleve->classe_id, $trimestre, $note->matiere_id, $note->moyenne_trimestrielle);
+                } else {
+                    $note->rang_matiere = '-';
+                }
+            }
             
             $conduite = \App\Models\Conduite::where('eleve_id', $eleveId)
                         ->where('trimestre', $trimestre)
@@ -168,6 +177,28 @@ class BulletinController extends Controller
             'max' => $moyennes->max() ?? 0,
             'moyenne' => $moyennes->avg() ?? 0
         ];
+    }
+    
+    private function calculerRangMatiere($classeId, $trimestre, $matiereId, $moyenneMatiereEleve)
+    {
+        $elevesAvecMoyennes = DB::table('eleves')
+            ->join('notes', 'eleves.id', '=', 'notes.eleve_id')
+            ->where('notes.trimestre', '=', $trimestre)
+            ->where('notes.matiere_id', '=', $matiereId)
+            ->where('eleves.classe_id', '=', $classeId)
+            ->select('eleves.id', 'notes.moyenne_trimestrielle as moyenne')
+            ->orderBy('moyenne', 'DESC')
+            ->get();
+            
+        $rang = 1;
+        foreach ($elevesAvecMoyennes as $index => $eleve) {
+            if ($eleve->moyenne <= $moyenneMatiereEleve) {
+                $rang = $index + 1;
+                break;
+            }
+        }
+        
+        return $rang;
     }
     
      public function generatePDF($eleveId, $trimestre)

@@ -14,6 +14,9 @@ import 'login_screen.dart';
 import 'notifications_screen.dart';
 import 'emploi_du_temps_screen.dart';
 import 'convocations_screen.dart';
+import 'exercices_screen.dart';
+import 'contacts_professeurs_screen.dart'; // Nouvel import
+import '../services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -36,10 +39,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadDashboardData();
     _loadNotifications();
+    _initPushNotifications();
 
     // Polling every 30 seconds
     _notificationTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _loadNotifications();
+    });
+  }
+
+  void _initPushNotifications() {
+    final notificationService = NotificationService();
+    notificationService.initNotifications((token) {
+      if (!mounted) return;
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      apiService.sendFcmToken(token);
     });
   }
 
@@ -424,6 +437,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) => ConvocationsScreen(
+                                              enfants: _mesEnfants,
+                                              initialEleve: _selectedEnfant!,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    _buildActionCard(
+                                      context,
+                                      title: 'Exercices',
+                                      icon: Icons.menu_book_rounded,
+                                      color: Colors.blueAccent,
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ExercicesScreen(
                                               enfants: _mesEnfants,
                                               initialEleve: _selectedEnfant!,
                                             ),
