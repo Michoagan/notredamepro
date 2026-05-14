@@ -1,0 +1,24 @@
+[31m✗[39m Build failed in 478ms
+[31merror during build:
+[31m[vite:esbuild] Transform failed with 1 error:
+C:/Notredamepro/frontend-ecole/src/pages/Student/Dashboard.jsx:273:22: ERROR: Expected "}" but found ":"[31m
+file: [36mC:/Notredamepro/frontend-ecole/src/pages/Student/Dashboard.jsx:273:22[31m
+[33m
+[33mExpected "}" but found ":"[33m
+271 |                              )}
+272 |                          </div>
+273 |                      ) : (
+    |                        ^
+274 |                          <div className="p-6">
+275 |                              <h2 style={{ fontSize: '1.5rem', color: 'hsl(var(--text-dark))', display: 'flex', alignIt...
+[31m
+    at failureErrorWithLog (C:\Notredamepro\frontend-ecole\node_modules\esbuild\lib\main.js:1467:15)
+    at C:\Notredamepro\frontend-ecole\node_modules\esbuild\lib\main.js:736:50
+    at responseCallbacks.<computed> (C:\Notredamepro\frontend-ecole\node_modules\esbuild\lib\main.js:603:9)
+    at handleIncomingPacket (C:\Notredamepro\frontend-ecole\node_modules\esbuild\lib\main.js:658:12)
+    at Socket.readFromStdout (C:\Notredamepro\frontend-ecole\node_modules\esbuild\lib\main.js:581:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "369426726376",
+    "project_id": "parentndtg",
+    "storage_bucket": "parentndtg.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:369426726376:android:2164b191e79df83c76f85d",
+        "android_client_info": {
+          "package_name": "com.mario.parentsecole"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxzxxcvupyzMY2XRB7av4bsH3LE0VVX-U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:369426726376:android:5ae83e0b8d840ead76f85d",
+        "android_client_info": {
+          "package_name": "com.ndtg.parent_frontend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxzxxcvupyzMY2XRB7av4bsH3LE0VVX-U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

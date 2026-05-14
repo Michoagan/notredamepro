@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply font-sans antialiased text-slate-700 bg-surface-50;
+        font-family: 'Outfit', sans-serif;
+    }
+}
+
+@layer utilities {
+    .animate-fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+    }
+
+    .animate-slide-up {
+        animation: slideUp 0.5s ease-out forwards;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Custom Scrollbar for nicer finish */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-slate-300/50 rounded-full hover:bg-slate-400 transition-colors;
+}
+
+@layer utilities {
+    .glassmorphism {
+        @apply bg-white/70 backdrop-blur-md border border-white/40 shadow-glass;
+    }
+    
+    .glass-card {
+        @apply bg-glass-gradient backdrop-blur-lg border border-white/50 shadow-soft rounded-2xl;
+    }
+}

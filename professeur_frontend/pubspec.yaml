@@ -1,0 +1,53 @@
+name: parentsecole
+description: Une application pour les parents d'élèves
+
+version: 1.0.0+3
+
+environment:
+  sdk: '>=2.19.0 <3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.2.1
+  http: 1.6.0
+  provider: ^6.0.5
+  flutter_localizations:
+    sdk: flutter
+  shared_preferences: ^2.1.1
+  pdf: ^3.10.4
+  printing: ^5.11.0
+  intl: any
+  fl_chart: ^1.1.1
+  url_launcher: ^6.1.11
+  flutter_secure_storage: ^10.0.0
+  local_auth: ^3.0.1
+  firebase_core: ^2.15.1
+  firebase_messaging: ^14.6.7
+  share_plus: ^12.0.2
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+  # Supprimez ou corrigez la section fonts si elle existe
+  # fonts:
+  #   - family: ...
+
+  assets:
+    - assets/images/
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#040E3E"
+  adaptive_icon_foreground: "assets/images/logo.png"
+  remove_alpha_ios: true
